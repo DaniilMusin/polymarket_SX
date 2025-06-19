@@ -4,11 +4,11 @@ from aiohttp import ClientSession
 from aiohttp.client_exceptions import ClientError
 from typing import Any
 
-API_CLOB = "https://polymarket.com/api"
+API_REST = "https://api.sx.bet"
 
 
-class OrderbookError(Exception):
-    """Raised when order book data cannot be retrieved or parsed."""
+class SxError(Exception):
+    """Raised when SX API responses are invalid."""
 
 
 def retry(attempts: int = 3, delay: float = 1.0):
@@ -34,18 +34,18 @@ def retry(attempts: int = 3, delay: float = 1.0):
 async def orderbook_depth(
     session: ClientSession, market_id: str, depth: int = 20
 ) -> float:
-    """Return total USDC quantity in top-N bid levels (Yes side)."""
+    """Return total USDC quantity in top-N bid levels on SX."""
     try:
-        async with session.get(f"{API_CLOB}/orderbook/{market_id}") as r:
+        async with session.get(f"{API_REST}/orderbook/{market_id}") as r:
             if r.status != 200:
-                raise OrderbookError(f"status {r.status}")
+                raise SxError(f"status {r.status}")
             data: Any = await r.json()
     except ClientError as exc:
-        raise OrderbookError("request failed") from exc
+        raise SxError("request failed") from exc
 
     try:
-        bids = [float(lvl["quantity"]) for lvl in data["bids"]["Yes"][:depth]]
+        bids = [float(lvl["quantity"]) for lvl in data["bids"][:depth]]
     except (KeyError, ValueError, TypeError) as exc:
-        raise OrderbookError("bad response format") from exc
+        raise SxError("bad response format") from exc
 
     return sum(bids)

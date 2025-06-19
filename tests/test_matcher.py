@@ -2,7 +2,9 @@ import os
 import sys
 from datetime import datetime
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))  # noqa: E402
+sys.path.insert(
+    0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+)  # noqa: E402
 
 from core.matcher import match  # noqa: E402
 
@@ -20,3 +22,10 @@ def test_match_found():
     assert len(pairs) == 1
     assert pairs[0][0] is pm_list[0]
     assert pairs[0][1] is sx_list[0]
+
+
+def test_match_not_found():
+    pm_list = [Obj("A @ B", datetime(2025, 6, 19))]
+    sx_list = [Obj("C @ D", datetime(2025, 6, 19))]
+    pairs = match(pm_list, sx_list, min_score=95)
+    assert pairs == []
