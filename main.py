@@ -20,7 +20,9 @@ async def main():
 
     async with ClientSession() as session:
         # Example market ids placeholders
-        await process_depth(session, "pm_example", "sx_example")
+        while not stop.is_set():
+            await process_depth(session, "pm_example", "sx_example")
+            await asyncio.sleep(30)
         await stop.wait()
 
 
