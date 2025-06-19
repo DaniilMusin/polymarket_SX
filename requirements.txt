@@ -1,0 +1,6 @@
+rapidfuzz>=3.5
+
+prometheus-client>=0.20
+python-telegram-bot>=21.2
+flake8>=7.0
+flake8-bugbear>=24.3

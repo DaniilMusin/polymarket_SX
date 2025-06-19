@@ -1,0 +1,320 @@
+ (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
+diff --git a/.env.example b/.env.example
+new file mode 100644
+index 0000000000000000000000000000000000000000..516bd9c1d25cf9d68ec95ab9168963a963180631
+--- /dev/null
++++ b/.env.example
+@@ -0,0 +1,2 @@
++TELEGRAM_TOKEN=66234xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
++TELEGRAM_CHAT_ID=-1001234567890
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+new file mode 100644
+index 0000000000000000000000000000000000000000..9178e4a54637702b9a8afb86782778840b650a11
+--- /dev/null
++++ b/.github/workflows/ci.yml
+@@ -0,0 +1,23 @@
++name: CI
++
++on: [push, pull_request]
++
++jobs:
++  build-test:
++    runs-on: ubuntu-latest
++    steps:
++      - uses: actions/checkout@v4
++      - name: Set up Python
++        uses: actions/setup-python@v5
++        with:
++          python-version: "3.11"
++      - name: Install deps
++        run: |
++          python -m pip install --upgrade pip
++          pip install -r requirements.txt
++      - name: Lint
++        run: flake8 .
++      - name: Test
++        run: pytest -q
++      - name: Docker Build
++        run: docker build -t arb-bot .
+diff --git a/.gitignore b/.gitignore
+new file mode 100644
+index 0000000000000000000000000000000000000000..57756cfe4606f5f0612b91c16ae2183f379d74f5
+--- /dev/null
++++ b/.gitignore
+@@ -0,0 +1,4 @@
++__pycache__/
++.env
++.env.*
++.pytest_cache/
+diff --git a/Dockerfile b/Dockerfile
+new file mode 100644
+index 0000000000000000000000000000000000000000..dc3c1371fd8041ca8101a8d8bb7d306bc215bdf6
+--- /dev/null
++++ b/Dockerfile
+@@ -0,0 +1,6 @@
++FROM python:3.11-slim
++WORKDIR /app
++COPY requirements.txt .
++RUN pip install --no-cache-dir -r requirements.txt
++COPY . .
++CMD ["python", "main.py"]
+diff --git a/README.md b/README.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..30f5c03da83ae659f072ec11eb30a16bcabac2e5
+--- /dev/null
++++ b/README.md
+@@ -0,0 +1,21 @@
++# Polymarket SX Arbitrage Bot
++
++This project demonstrates a simple arbitrage strategy between SX and Polymarket.
++It features fuzzy matching for markets, Prometheus metrics on `/metrics`,
++Telegram error alerts and a basic CI workflow.
++
++## Quick start
++
++```bash
++pip install -r requirements.txt
++flake8 .
++pytest -q
++```
++
++To build a container locally use:
++
++```bash
++docker build -t arb-bot .
++```
++
++Copy `.env.example` to `.env` and fill in the API and Telegram tokens before running.
+diff --git "a/\320\277\321\203\321\201\321\202\320\276\320\271.txt" b/__init__.py
+similarity index 100%
+rename from "\320\277\321\203\321\201\321\202\320\276\320\271.txt"
+rename to __init__.py
+diff --git a/config.py b/config.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..c191b9df68a407b1f78d225e0886c4d41cebf85e
+--- /dev/null
++++ b/config.py
+@@ -0,0 +1,5 @@
++SLIP_BY_DEPTH = {
++    1000: 0.001,
++    500: 0.0015,
++    0: 0.002,
++}
+diff --git a/connectors/__init__.py b/connectors/__init__.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
+diff --git a/connectors/polymarket.py b/connectors/polymarket.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..da7a828aef66f0e1582deb8a8a35fdb3ceef2ea0
+--- /dev/null
++++ b/connectors/polymarket.py
+@@ -0,0 +1,27 @@
++import asyncio
++from aiohttp import ClientSession
++
++API_CLOB = "https://polymarket.com/api"
++
++
++def retry(attempts: int = 3, delay: float = 1.0):
++    def decorator(func):
++        async def wrapper(*args, **kwargs):
++            for i in range(attempts):
++                try:
++                    return await func(*args, **kwargs)
++                except Exception:
++                    if i == attempts - 1:
++                        raise
++                    await asyncio.sleep(delay)
++        return wrapper
++    return decorator
++
++
++@retry()
++async def orderbook_depth(session: ClientSession, market_id: str, depth: int = 20) -> float:
++    """Return total USDC quantity in top-N bid levels (Yes side)."""
++    async with session.get(f"{API_CLOB}/orderbook/{market_id}") as r:
++        ob = await r.json()
++    bids = [float(lvl["quantity"]) for lvl in ob["bids"]["Yes"][:depth]]
++    return sum(bids)
+diff --git a/core/__init__.py b/core/__init__.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
+diff --git a/core/alerts.py b/core/alerts.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..94e0b4ab22530a5291ffd91c6d3e2fc56d703efc
+--- /dev/null
++++ b/core/alerts.py
+@@ -0,0 +1,19 @@
++import logging
++import os
++import asyncio
++from telegram import Bot
++
++TOKEN = os.getenv("TELEGRAM_TOKEN")
++CHAT = int(os.getenv("TELEGRAM_CHAT_ID", "0"))
++
++
++class TelegramHandler(logging.Handler):
++    def __init__(self, level=logging.ERROR):
++        super().__init__(level)
++        self.bot = Bot(TOKEN)
++
++    def emit(self, record):
++        if not TOKEN or not CHAT:
++            return
++        msg = f"\u26a0\ufe0f {record.levelname}: {record.getMessage()[:350]}"
++        asyncio.create_task(self.bot.send_message(chat_id=CHAT, text=msg))
+diff --git a/core/matcher.py b/core/matcher.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..7336aee4caa7c4d7c297ac7a31eb2abadb147c7f
+--- /dev/null
++++ b/core/matcher.py
+@@ -0,0 +1,40 @@
++from rapidfuzz import fuzz
++
++
++def _normalize(s: str) -> str:
++    return s.lower().replace(" at ", " @ ").replace("-", " ")
++
++
++def _extract_teams(title: str) -> tuple[str, str]:
++    """`Boston Celtics @ LA Clippers` -> ('boston celtics','la clippers')"""
++    if "@" in title:
++        return tuple(_normalize(x.strip()) for x in title.split("@", 1))
++    return (_normalize(title), "")
++
++
++def match(pm_list, sx_list, min_score: int = 87):
++    pairs = []
++    sx_index = {_normalize(x.title): x for x in sx_list}
++
++    for pm in pm_list:
++        key = _normalize(pm.title)
++        if key in sx_index:
++            pairs.append((pm, sx_index[key]))
++            continue
++
++        pteams = _extract_teams(pm.title)
++        date_tag = pm.t_start.strftime("%Y-%m-%d")
++        candidates = [
++            (
++                sx,
++                fuzz.token_set_ratio(
++                    " ".join(_extract_teams(sx.title)) + " " + date_tag,
++                    " ".join(pteams) + " " + date_tag,
++                ),
++            )
++            for sx in sx_list
++        ]
++        best, score = max(candidates, key=lambda x: x[1])
++        if score >= min_score:
++            pairs.append((pm, best))
++    return pairs
+diff --git a/core/metrics.py b/core/metrics.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..5ce2a0df94a30f89b3783db28c156a4dcf893d58
+--- /dev/null
++++ b/core/metrics.py
+@@ -0,0 +1,9 @@
++from prometheus_client import start_http_server, Gauge
++
++g_edge = Gauge("arb_signal_total", "Signals (edge found)")
++g_trades = Gauge("arb_trades_total", "Executed trade pairs")
++g_pnl = Gauge("arb_cum_pnl_usd", "Cumulative PnL (USDC)")
++
++
++def init_metrics(port: int = 9090):
++    start_http_server(port)
+diff --git a/main.py b/main.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..130c58bba2ba7c0c92dfe4c2e61a68d68c8823ae
+--- /dev/null
++++ b/main.py
+@@ -0,0 +1,34 @@
++import asyncio
++import logging
++from aiohttp import ClientSession
++
++from config import SLIP_BY_DEPTH
++from core.metrics import g_edge, g_trades, g_pnl, init_metrics
++from core.alerts import TelegramHandler
++from connectors.polymarket import orderbook_depth
++
++
++async def process(depth_value: float):
++    for d, slip in sorted(SLIP_BY_DEPTH.items(), reverse=True):
++        if depth_value >= d:
++            max_slip = slip
++            break
++    g_edge.inc()
++    g_trades.inc()
++    g_pnl.set(0.0)
++    logging.info("Processed with max_slip %.4f", max_slip)
++
++
++async def main():
++    logging.basicConfig(level=logging.INFO)
++    logging.getLogger().addHandler(TelegramHandler())
++    init_metrics()
++
++    async with ClientSession() as session:
++        # Example market id placeholder
++        depth = await orderbook_depth(session, "example_market")
++        await process(depth)
++
++
++if __name__ == "__main__":
++    asyncio.run(main())
+diff --git a/requirements.txt b/requirements.txt
+new file mode 100644
+index 0000000000000000000000000000000000000000..94d2fc8b71d72c28d04b30c06c01b414eebe5c19
+--- /dev/null
++++ b/requirements.txt
+@@ -0,0 +1,6 @@
++rapidfuzz>=3.5
++
++prometheus-client>=0.20
++python-telegram-bot>=21.2
++flake8>=7.0
++flake8-bugbear>=24.3
+diff --git a/setup.cfg b/setup.cfg
+new file mode 100644
+index 0000000000000000000000000000000000000000..e362d737530a212cfc4f67bdde9690d11ea58a2d
+--- /dev/null
++++ b/setup.cfg
+@@ -0,0 +1,4 @@
++[flake8]
++max-line-length = 100
++extend-select = B, C, E, F, W
++exclude = .git,__pycache__,build,dist
+diff --git a/tests/test_matcher.py b/tests/test_matcher.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..42da951f9adc97cb81a0208576dba250a24ef77a
+--- /dev/null
++++ b/tests/test_matcher.py
+@@ -0,0 +1,22 @@
++import os
++import sys
++from datetime import datetime
++
++sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))  # noqa: E402
++
++from core.matcher import match  # noqa: E402
++
++
++class Obj:
++    def __init__(self, title, t_start):
++        self.title = title
++        self.t_start = t_start
++
++
++def test_match_found():
++    pm_list = [Obj("Boston Celtics @ LA Clippers", datetime(2025, 6, 19))]
++    sx_list = [Obj("LA Clippers @ Boston Celtics", datetime(2025, 6, 19))]
++    pairs = match(pm_list, sx_list)
++    assert len(pairs) == 1
++    assert pairs[0][0] is pm_list[0]
++    assert pairs[0][1] is sx_list[0]
+ 
+EOF
+)
