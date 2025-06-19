@@ -8,7 +8,8 @@ def _normalize(s: str) -> str:
 def _extract_teams(title: str) -> tuple[str, str]:
     """`Boston Celtics @ LA Clippers` -> ('boston celtics','la clippers')"""
     if "@" in title:
-        return tuple(_normalize(x.strip()) for x in title.split("@", 1))
+        left, right = (_normalize(x.strip()) for x in title.split("@", 1))
+        return left, right
     return (_normalize(title), "")
 
 
