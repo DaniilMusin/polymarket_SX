@@ -7,7 +7,7 @@ from core.alerts import TelegramHandler
 from core.processor import process_depth
 
 
-async def main():
+async def main() -> None:
     logging.basicConfig(level=logging.INFO)
     logging.getLogger().addHandler(TelegramHandler())
     init_metrics()
