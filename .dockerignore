@@ -1,0 +1,28 @@
+# Exclude version control and CI files
+.git
+.github
+
+# Ignore Python caches and compiled files
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Ignore test suites and local env files
+/tests
+.env
+.env.*
+!.env.example
+
+# Editor directories and system files
+.vscode/
+.idea/
+.DS_Store
+
+# Patch and diff files
+patch.diff
+patchdiff
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
