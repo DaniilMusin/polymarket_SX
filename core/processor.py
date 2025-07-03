@@ -2,7 +2,7 @@ import logging
 from aiohttp import ClientSession
 
 from config import SLIP_BY_DEPTH
-from core.metrics import g_edge, g_trades, g_pnl
+from core.metrics import g_edge, g_trades
 from connectors import polymarket, sx
 
 
@@ -22,6 +22,5 @@ async def process_depth(
 
     g_edge.inc()
     g_trades.inc()
-    g_pnl.set(0.0)
     logging.info("Depth PM %.2f SX %.2f -> max_slip %.4f", pm_depth, sx_depth, max_slip)
     return max_slip
