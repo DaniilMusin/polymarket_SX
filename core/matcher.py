@@ -1,4 +1,6 @@
 from rapidfuzz import fuzz
+from collections.abc import Sequence
+from typing import Any
 
 
 def _normalize(s: str) -> str:
@@ -13,8 +15,10 @@ def _extract_teams(title: str) -> tuple[str, str]:
     return (_normalize(title), "")
 
 
-def match(pm_list, sx_list, min_score: int = 87):
-    pairs = []
+def match(
+    pm_list: Sequence[Any], sx_list: Sequence[Any], min_score: int = 87
+) -> list[tuple[Any, Any]]:
+    pairs: list[tuple[Any, Any]] = []
     sx_index = {_normalize(x.title): x for x in sx_list}
 
     for pm in pm_list:
