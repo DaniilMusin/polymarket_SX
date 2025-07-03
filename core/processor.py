@@ -1,17 +1,11 @@
 import logging
-from aiohttp import ClientSession
 
 from config import SLIP_BY_DEPTH
 from core.metrics import g_edge, g_trades, g_pnl
-from connectors import polymarket, sx
 
 
-async def process_depth(
-    session: ClientSession, pm_market: str, sx_market: str
-) -> float:
-    """Fetch depth from both exchanges and determine max slippage."""
-    pm_depth = await polymarket.orderbook_depth(session, pm_market)
-    sx_depth = await sx.orderbook_depth(session, sx_market)
+async def process_depth(pm_depth: float, sx_depth: float) -> float:
+    """Determine max slippage given order book depths from both exchanges."""
     depth_value = min(pm_depth, sx_depth)
 
     max_slip = 0.0
