@@ -3,3 +3,7 @@ __pycache__/
 .env.*
 !.env.example
 .pytest_cache/
+
+# ignore patch files
+patch.diff
+patchdiff
