@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import aiohttp
 from aiohttp import ClientSession
 from aiohttp.client_exceptions import ClientError
 from typing import Any
@@ -36,7 +37,9 @@ async def orderbook_depth(
 ) -> float:
     """Return total USDC quantity in top-N bid levels on SX."""
     try:
-        async with session.get(f"{API_REST}/orderbook/{market_id}") as r:
+        async with session.get(
+            f"{API_REST}/orderbook/{market_id}", timeout=aiohttp.ClientTimeout()
+        ) as r:
             if r.status != 200:
                 raise SxError(f"status {r.status}")
             data: Any = await r.json()
