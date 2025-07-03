@@ -1,4 +1,14 @@
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Iterable, List, Protocol, Tuple
+
 from rapidfuzz import fuzz
+
+
+class MarketLike(Protocol):
+    title: str
+    t_start: datetime
 
 
 def _normalize(s: str) -> str:
@@ -13,8 +23,12 @@ def _extract_teams(title: str) -> tuple[str, str]:
     return (_normalize(title), "")
 
 
-def match(pm_list, sx_list, min_score: int = 87):
-    pairs = []
+def match(
+    pm_list: Iterable[MarketLike],
+    sx_list: Iterable[MarketLike],
+    min_score: int = 87,
+) -> List[Tuple[MarketLike, MarketLike]]:
+    pairs: List[Tuple[MarketLike, MarketLike]] = []
     sx_index = {_normalize(x.title): x for x in sx_list}
 
     for pm in pm_list:
