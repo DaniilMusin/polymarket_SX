@@ -6,6 +6,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 from connectors import polymarket, sx  # noqa: E402
 
+
 class DummyResponse:
     def __init__(self, data, status=200):
         self._data = data
@@ -20,12 +21,14 @@ class DummyResponse:
     async def __aexit__(self, exc_type, exc, tb):
         pass
 
+
 class DummySession:
     def __init__(self, data):
         self._data = data
 
     def get(self, *args, **kwargs):
         return DummyResponse(self._data)
+
 
 @pytest.mark.asyncio
 async def test_polymarket_bad_json():
@@ -35,6 +38,7 @@ async def test_polymarket_bad_json():
     msg = str(excinfo.value)
     assert 'bad response format' in msg
     assert 'bids' in msg
+
 
 @pytest.mark.asyncio
 async def test_sx_bad_json():
