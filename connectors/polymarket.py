@@ -19,7 +19,7 @@ def retry(attempts: int = 3, delay: float = 1.0):
                 try:
                     return await func(*args, **kwargs)
                 except Exception as exc:
-                    logging.warning(
+                    logging.debug(
                         "Attempt %s/%s failed: %s", i + 1, attempts, exc, exc_info=True
                     )
                     if i == attempts - 1:
@@ -41,14 +41,17 @@ async def orderbook_depth(
             f"{API_CLOB}/orderbook/{market_id}", timeout=aiohttp.ClientTimeout()
         ) as r:
             if r.status != 200:
+                logging.error("Polymarket API returned status %s", r.status)
                 raise OrderbookError(f"status {r.status}")
             data: Any = await r.json()
     except ClientError as exc:
+        logging.error("Polymarket request failed: %s", exc, exc_info=True)
         raise OrderbookError(f"request failed: {exc}") from exc
 
     try:
         bids = [float(lvl["quantity"]) for lvl in data["bids"]["Yes"][:depth]]
     except (KeyError, ValueError, TypeError) as exc:
+        logging.error("Polymarket bad response format: %s", exc, exc_info=True)
         raise OrderbookError(f"bad response format: {exc}") from exc
 
     return sum(bids)
