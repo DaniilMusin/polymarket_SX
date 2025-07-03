@@ -44,11 +44,11 @@ async def orderbook_depth(
                 raise SxError(f"status {r.status}")
             data: Any = await r.json()
     except ClientError as exc:
-        raise SxError("request failed") from exc
+        raise SxError(f"request failed: {exc}") from exc
 
     try:
         bids = [float(lvl["quantity"]) for lvl in data["bids"][:depth]]
     except (KeyError, ValueError, TypeError) as exc:
-        raise SxError("bad response format") from exc
+        raise SxError(f"bad response format: {exc}") from exc
 
     return sum(bids)
