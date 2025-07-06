@@ -2,7 +2,7 @@ import os
 import sys
 import pytest
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from core.metrics import g_pnl, reset_pnl  # noqa: E402
 from core import processor  # noqa: E402
