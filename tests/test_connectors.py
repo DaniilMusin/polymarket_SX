@@ -2,7 +2,7 @@ import sys
 import os
 import pytest
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from connectors import polymarket, sx  # noqa: E402
 
@@ -32,19 +32,19 @@ class DummySession:
 
 @pytest.mark.asyncio
 async def test_polymarket_bad_json():
-    session = DummySession({'foo': 'bar'})
+    session = DummySession({"foo": "bar"})
     with pytest.raises(polymarket.OrderbookError) as excinfo:
-        await polymarket.orderbook_depth(session, 'm')
+        await polymarket.orderbook_depth(session, "m")
     msg = str(excinfo.value)
-    assert 'bad response format' in msg
-    assert 'bids' in msg
+    assert "bad response format" in msg
+    assert "bids" in msg
 
 
 @pytest.mark.asyncio
 async def test_sx_bad_json():
-    session = DummySession({'foo': 'bar'})
+    session = DummySession({"foo": "bar"})
     with pytest.raises(sx.SxError) as excinfo:
-        await sx.orderbook_depth(session, 'm')
+        await sx.orderbook_depth(session, "m")
     msg = str(excinfo.value)
-    assert 'bad response format' in msg
-    assert 'bids' in msg
+    assert "bad response format" in msg
+    assert "bids" in msg
