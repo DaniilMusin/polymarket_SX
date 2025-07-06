@@ -9,7 +9,9 @@ Prometheus metrics on `/metrics`, Telegram error alerts and a basic CI workflow.
 
 ```bash
 pip install -r requirements.txt
+black --check .
 flake8 .
+mypy .
 pytest -q
 ```
 
