@@ -4,13 +4,24 @@ import asyncio
 from telegram import Bot
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
-CHAT = int(os.getenv("TELEGRAM_CHAT_ID", "0"))
+CHAT_ID_STR = os.getenv("TELEGRAM_CHAT_ID")
+
+# Validate chat ID properly 
+CHAT = None
+if CHAT_ID_STR:
+    try:
+        chat_id = int(CHAT_ID_STR)
+        if chat_id != 0:  # 0 is not a valid Telegram chat ID
+            CHAT = chat_id
+    except ValueError:
+        logging.warning("Invalid TELEGRAM_CHAT_ID: %s", CHAT_ID_STR)
 
 
 class TelegramHandler(logging.Handler):
     def __init__(self, level: int = logging.ERROR) -> None:
         super().__init__(level)
-        self.bot: Bot | None = Bot(TOKEN) if TOKEN else None
+        # Only create bot if both token and valid chat ID are available
+        self.bot: Bot | None = Bot(TOKEN) if TOKEN and CHAT else None
 
     def emit(self, record: logging.LogRecord) -> None:
         if not self.bot or not CHAT:
