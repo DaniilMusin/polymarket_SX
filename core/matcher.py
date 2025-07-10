@@ -39,6 +39,11 @@ def match(
             )
             for sx in sx_list
         ]
+        
+        # Fix: Check if candidates list is empty to avoid ValueError
+        if not candidates:
+            continue
+            
         best, score = max(candidates, key=lambda x: x[1])
         if score >= min_score:
             pairs.append((pm, best))

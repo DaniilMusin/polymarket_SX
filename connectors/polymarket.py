@@ -20,8 +20,10 @@ async def orderbook_depth(
 ) -> float:
     """Return total USDC quantity in top-N bid levels (Yes side)."""
     try:
+        # Fix: Add explicit timeout instead of using default
+        timeout = aiohttp.ClientTimeout(total=10.0, connect=5.0)
         async with session.get(
-            f"{API_CLOB}/orderbook/{market_id}", timeout=aiohttp.ClientTimeout()
+            f"{API_CLOB}/orderbook/{market_id}", timeout=timeout
         ) as r:
             if r.status != 200:
                 logging.error("Polymarket API returned status %s", r.status)
