@@ -29,6 +29,9 @@ async def orderbook_depth(
                 logging.error("SX API returned status %s", r.status)
                 raise SxError(f"status {r.status}")
             data: Any = await r.json()
+    except asyncio.TimeoutError as exc:
+        logging.error("SX request timed out: %s", exc, exc_info=True)
+        raise SxError(f"request timeout: {exc}") from exc
     except ClientError as exc:
         logging.error("SX request failed: %s", exc, exc_info=True)
         raise SxError(f"request failed: {exc}") from exc

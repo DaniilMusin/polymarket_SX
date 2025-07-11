@@ -1,5 +1,6 @@
 import sys
 import os
+import asyncio
 import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -30,6 +31,18 @@ class DummySession:
         return DummyResponse(self._data)
 
 
+class DummyTimeoutSession:
+    def get(self, *args, **kwargs):
+        class CM:
+            async def __aenter__(self):
+                raise asyncio.TimeoutError("boom")
+
+            async def __aexit__(self, exc_type, exc, tb):
+                pass
+
+        return CM()
+
+
 @pytest.mark.asyncio
 async def test_polymarket_bad_json():
     session = DummySession({"foo": "bar"})
@@ -48,3 +61,21 @@ async def test_sx_bad_json():
     msg = str(excinfo.value)
     assert "bad response format" in msg
     assert "bids" in msg
+
+
+@pytest.mark.asyncio
+async def test_polymarket_timeout():
+    session = DummyTimeoutSession()
+    with pytest.raises(polymarket.OrderbookError) as excinfo:
+        await polymarket.orderbook_depth(session, "m")
+    msg = str(excinfo.value).lower()
+    assert "timeout" in msg
+
+
+@pytest.mark.asyncio
+async def test_sx_timeout():
+    session = DummyTimeoutSession()
+    with pytest.raises(sx.SxError) as excinfo:
+        await sx.orderbook_depth(session, "m")
+    msg = str(excinfo.value).lower()
+    assert "timeout" in msg
