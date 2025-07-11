@@ -21,13 +21,13 @@ async def main() -> None:
             except Exception as exc:
                 logging.error("Failed to get Polymarket depth: %s", exc)
                 return
-                
+
             try:
                 sx_depth = await sx.orderbook_depth(session, "sx_example")
             except Exception as exc:
                 logging.error("Failed to get SX depth: %s", exc)
                 return
-                
+
             await process_depth(pm_depth, sx_depth)
     except Exception as exc:
         logging.error("Unexpected error in main: %s", exc, exc_info=True)

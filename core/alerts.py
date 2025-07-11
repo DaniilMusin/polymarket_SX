@@ -6,7 +6,7 @@ from telegram import Bot
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID_STR = os.getenv("TELEGRAM_CHAT_ID")
 
-# Validate chat ID properly 
+# Validate chat ID properly
 CHAT = None
 if CHAT_ID_STR:
     try:
