@@ -6,7 +6,7 @@ from telegram import Bot
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID_STR = os.getenv("TELEGRAM_CHAT_ID")
 
-# Validate chat ID properly 
+# Validate chat ID properly
 CHAT = None
 if CHAT_ID_STR:
     try:
@@ -24,10 +24,11 @@ class TelegramHandler(logging.Handler):
         self.bot: Bot | None = Bot(TOKEN) if TOKEN and CHAT else None
 
     def emit(self, record: logging.LogRecord) -> None:
-        if not self.bot or not CHAT:
+        if not CHAT:
             return
         bot = self.bot
-        assert bot is not None
+        if bot is None:
+            return
         msg = f"\u26a0\ufe0f {record.levelname}: {record.getMessage()[:350]}"
         try:
             loop = asyncio.get_running_loop()
