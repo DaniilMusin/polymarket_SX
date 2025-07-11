@@ -29,6 +29,9 @@ async def orderbook_depth(
                 logging.error("Polymarket API returned status %s", r.status)
                 raise OrderbookError(f"status {r.status}")
             data: Any = await r.json()
+    except asyncio.TimeoutError as exc:
+        logging.error("Polymarket request timed out: %s", exc, exc_info=True)
+        raise OrderbookError(f"request timeout: {exc}") from exc
     except ClientError as exc:
         logging.error("Polymarket request failed: %s", exc, exc_info=True)
         raise OrderbookError(f"request failed: {exc}") from exc
