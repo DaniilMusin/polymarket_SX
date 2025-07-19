@@ -38,6 +38,9 @@ async def orderbook_depth(
 
     try:
         bids = [float(lvl["quantity"]) for lvl in data["bids"][:depth]]
+        if not bids:
+            logging.warning("SX returned empty bids list")
+            return 0.0
     except (KeyError, ValueError, TypeError) as exc:
         logging.error("SX bad response format: %s", exc, exc_info=True)
         raise SxError(f"bad response format: {exc}") from exc

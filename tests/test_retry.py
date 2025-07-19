@@ -1,13 +1,15 @@
-import asyncio
 import pytest
 
 from utils.retry import retry
 
+
 class CustomError(Exception):
     pass
 
+
 class OtherError(Exception):
     pass
+
 
 @pytest.mark.asyncio
 async def test_retry_only_selected_exceptions():

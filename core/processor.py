@@ -8,7 +8,8 @@ async def process_depth(pm_depth: float, sx_depth: float) -> float:
     """Determine max slippage given order book depths from both exchanges."""
     depth_value = min(pm_depth, sx_depth)
 
-    max_slip = 0.0
+    # Default to highest slippage if depth is below all thresholds
+    max_slip = max(SLIP_BY_DEPTH.values())
     for d, slip in sorted(SLIP_BY_DEPTH.items(), reverse=True):
         if depth_value >= d:
             max_slip = slip

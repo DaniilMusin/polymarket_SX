@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import Callable, Coroutine, TypeVar, Any, Tuple, Type
+from typing import Callable, Coroutine, TypeVar, Any, Tuple, Type, cast
 from functools import wraps
 
 F = TypeVar("F", bound=Callable[..., Coroutine[Any, Any, Any]])
@@ -39,6 +39,6 @@ def retry(
                         raise
                     await asyncio.sleep(delay)
 
-        return wrapper  # type: ignore[return-value]
+        return cast(F, wrapper)
 
     return decorator
