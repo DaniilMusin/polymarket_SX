@@ -135,6 +135,12 @@ def print_depth_analysis(pm_depth: Dict, sx_depth: Dict) -> None:
     print(f"   Polymarket: {pm_spread:.4f} ({pm_spread*100:.2f}%)")
     print(f"   SX: {sx_spread:.4f} ({sx_spread*100:.2f}%)")
 
+def calculate_total_depth(orderbook: Dict) -> float:
+    """Вычисляем общую глубину стакана"""
+    total_bids = sum(order["size"] for order in orderbook.get("bids", []))
+    total_asks = sum(order["size"] for order in orderbook.get("asks", []))
+    return total_bids + total_asks
+
 async def demo_cycle(cycle_num: int) -> None:
     """Выполняем один демо-цикл"""
     print(f"\n🔄 ЦИКЛ #{cycle_num}")
@@ -146,9 +152,15 @@ async def demo_cycle(cycle_num: int) -> None:
     # Выводим анализ
     print_depth_analysis(pm_depth, sx_depth)
     
+    # Вычисляем общую глубину для каждой биржи
+    pm_total_depth = calculate_total_depth(pm_depth)
+    sx_total_depth = calculate_total_depth(sx_depth)
+    
     # Обрабатываем данные через основную логику бота
     print(f"\n⚙️ Обработка данных...")
-    await process_depth(pm_depth, sx_depth)
+    print(f"   Общая глубина Polymarket: {pm_total_depth:.0f}")
+    print(f"   Общая глубина SX: {sx_total_depth:.0f}")
+    await process_depth(pm_total_depth, sx_total_depth)
     
     print(f"✅ Цикл #{cycle_num} завершен")
 
