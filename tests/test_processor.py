@@ -11,8 +11,18 @@ from core import processor  # noqa: E402
 
 @pytest.mark.asyncio
 async def test_process_depth():
-    result = await processor.process_depth(1100, 800)
-    assert abs(result - 0.0015) < 1e-6
+    # Создаем моковые данные стакана
+    pm_orderbook = {
+        "bids": [{"price": 0.65, "size": 1100}],
+        "asks": [{"price": 0.66, "size": 800}]
+    }
+    sx_orderbook = {
+        "bids": [{"price": 0.65, "size": 800}],
+        "asks": [{"price": 0.66, "size": 1100}]
+    }
+    
+    result = await processor.process_depth(pm_orderbook, sx_orderbook)
+    assert abs(result - 0.0010) < 1e-6  # Ожидаем проскальзывание для глубины 800
 
 
 @pytest.mark.asyncio
@@ -25,8 +35,18 @@ async def test_process_depth_empty_config():
         # Set empty dictionary
         processor.SLIP_BY_DEPTH = {}
         
+        # Создаем моковые данные стакана
+        pm_orderbook = {
+            "bids": [{"price": 0.65, "size": 1100}],
+            "asks": [{"price": 0.66, "size": 800}]
+        }
+        sx_orderbook = {
+            "bids": [{"price": 0.65, "size": 800}],
+            "asks": [{"price": 0.66, "size": 1100}]
+        }
+        
         # Should not raise ValueError and should return 0.0
-        result = await processor.process_depth(1100, 800)
+        result = await processor.process_depth(pm_orderbook, sx_orderbook)
         assert result == 0.0
     finally:
         # Restore original config
