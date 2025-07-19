@@ -12,12 +12,8 @@ def calculate_total_depth(orderbook: Dict[str, List[Dict]]) -> float:
     return total_bids + total_asks
 
 
-async def process_depth(pm_orderbook: Dict, sx_orderbook: Dict) -> float:
+async def process_depth(pm_depth: float, sx_depth: float) -> float:
     """Определяем максимальное проскальзывание на основе глубины стакана с обеих бирж."""
-    
-    # Вычисляем общую глубину для каждой биржи
-    pm_depth = calculate_total_depth(pm_orderbook)
-    sx_depth = calculate_total_depth(sx_orderbook)
     
     # Берем минимальную глубину (лимитирующий фактор)
     depth_value = min(pm_depth, sx_depth)

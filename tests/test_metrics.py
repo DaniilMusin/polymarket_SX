@@ -18,15 +18,9 @@ def test_reset_pnl_sets_zero():
 async def test_process_depth_does_not_reset_pnl():
     g_pnl.set(3.0)
     
-    # Создаем моковые данные стакана
-    pm_orderbook = {
-        "bids": [{"price": 0.65, "size": 1000}],
-        "asks": [{"price": 0.66, "size": 1000}]
-    }
-    sx_orderbook = {
-        "bids": [{"price": 0.65, "size": 1000}],
-        "asks": [{"price": 0.66, "size": 1000}]
-    }
+    # Тестируем с числовыми значениями глубины
+    pm_depth = 2000.0  # 1000 + 1000
+    sx_depth = 2000.0  # 1000 + 1000
     
-    await processor.process_depth(pm_orderbook, sx_orderbook)
+    await processor.process_depth(pm_depth, sx_depth)
     assert g_pnl._value.get() == 3.0
