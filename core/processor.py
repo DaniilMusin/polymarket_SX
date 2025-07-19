@@ -9,7 +9,8 @@ async def process_depth(pm_depth: float, sx_depth: float) -> float:
     depth_value = min(pm_depth, sx_depth)
 
     # Default to highest slippage if depth is below all thresholds
-    max_slip = max(SLIP_BY_DEPTH.values())
+    # Handle empty dictionary case by defaulting to 0.0
+    max_slip = max(SLIP_BY_DEPTH.values()) if SLIP_BY_DEPTH else 0.0
     for d, slip in sorted(SLIP_BY_DEPTH.items(), reverse=True):
         if depth_value >= d:
             max_slip = slip
