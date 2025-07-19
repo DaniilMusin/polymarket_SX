@@ -21,7 +21,12 @@ class TelegramHandler(logging.Handler):
     def __init__(self, level: int = logging.ERROR) -> None:
         super().__init__(level)
         # Only create bot if both token and valid chat ID are available
-        self.bot: Bot | None = Bot(TOKEN) if TOKEN and CHAT else None
+        self.bot: Bot | None = None
+        if TOKEN and CHAT:
+            try:
+                self.bot = Bot(TOKEN)
+            except Exception as exc:
+                logging.warning("Failed to create Telegram bot: %s", exc)
 
     def emit(self, record: logging.LogRecord) -> None:
         if not CHAT:

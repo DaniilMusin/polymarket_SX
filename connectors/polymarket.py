@@ -38,6 +38,9 @@ async def orderbook_depth(
 
     try:
         bids = [float(lvl["quantity"]) for lvl in data["bids"]["Yes"][:depth]]
+        if not bids:
+            logging.warning("Polymarket returned empty bids list")
+            return 0.0
     except (KeyError, ValueError, TypeError) as exc:
         logging.error("Polymarket bad response format: %s", exc, exc_info=True)
         raise OrderbookError(f"bad response format: {exc}") from exc
