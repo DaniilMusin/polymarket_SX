@@ -6,6 +6,7 @@
 import asyncio
 import logging
 from aiohttp import ClientSession
+import pytest
 
 from core.metrics import init_metrics
 from core.alerts import TelegramHandler
@@ -16,6 +17,7 @@ logging.basicConfig(level=logging.INFO)
 logging.getLogger().addHandler(TelegramHandler())
 init_metrics()
 
+@pytest.mark.asyncio
 async def test_bot_logic():
     """Тестируем основную логику бота с моковыми данными"""
     
