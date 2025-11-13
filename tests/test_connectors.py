@@ -5,7 +5,7 @@ import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from connectors import polymarket, sx  # noqa: E402
+from connectors import polymarket, sx, kalshi  # noqa: E402
 
 
 class DummyResponse:
@@ -79,3 +79,45 @@ async def test_sx_timeout():
         await sx.orderbook_depth(session, "m")
     msg = str(excinfo.value).lower()
     assert "timeout" in msg
+
+
+@pytest.mark.asyncio
+async def test_kalshi_bad_json():
+    session = DummySession({"foo": "bar"})
+    with pytest.raises(kalshi.KalshiError) as excinfo:
+        await kalshi.orderbook_depth(session, "m")
+    msg = str(excinfo.value)
+    assert "bad response format" in msg
+
+
+@pytest.mark.asyncio
+async def test_kalshi_timeout():
+    session = DummyTimeoutSession()
+    with pytest.raises(kalshi.KalshiError) as excinfo:
+        await kalshi.orderbook_depth(session, "m")
+    msg = str(excinfo.value).lower()
+    assert "timeout" in msg
+
+
+@pytest.mark.asyncio
+async def test_kalshi_valid_response():
+    # Test with valid Kalshi response format
+    data = {
+        "orderbook": {
+            "yes": [[50, 100], [49, 200], [48, 150]],
+            "no": [[51, 100], [52, 200]],
+        }
+    }
+    session = DummySession(data)
+    result = await kalshi.orderbook_depth(session, "TEST_MARKET", depth=3)
+    # Should sum quantities: 100 + 200 + 150 = 450
+    assert result == 450.0
+
+
+@pytest.mark.asyncio
+async def test_kalshi_empty_bids():
+    # Test with empty yes bids
+    data = {"orderbook": {"yes": [], "no": [[51, 100]]}}
+    session = DummySession(data)
+    result = await kalshi.orderbook_depth(session, "TEST_MARKET")
+    assert result == 0.0
