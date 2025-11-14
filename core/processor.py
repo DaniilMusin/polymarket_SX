@@ -14,13 +14,13 @@ def calculate_total_depth(orderbook: Dict[str, List[Dict]]) -> float:
 
 async def process_depth(pm_depth: float, sx_depth: float) -> float:
     """Определяем максимальное проскальзывание на основе глубины стакана с обеих бирж."""
-    
+
     # Берем минимальную глубину (лимитирующий фактор)
     depth_value = min(pm_depth, sx_depth)
 
     # По умолчанию используем максимальное проскальзывание, если глубина ниже всех порогов
     max_slip = max(SLIP_BY_DEPTH.values()) if SLIP_BY_DEPTH else 0.0
-    
+
     # Находим подходящее проскальзывание на основе глубины
     for d, slip in sorted(SLIP_BY_DEPTH.items(), reverse=True):
         if depth_value >= d:
@@ -29,6 +29,6 @@ async def process_depth(pm_depth: float, sx_depth: float) -> float:
 
     g_edge.inc()
     g_trades.inc()
-    
+
     logging.info("Depth PM %.2f SX %.2f -> max_slip %.4f", pm_depth, sx_depth, max_slip)
     return max_slip

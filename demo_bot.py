@@ -7,7 +7,7 @@ import argparse
 import asyncio
 import logging
 import random
-from typing import Dict, Tuple
+from typing import Any, Dict, List, Tuple
 
 from core.metrics import init_metrics
 from core.alerts import TelegramHandler
@@ -54,9 +54,9 @@ def generate_mock_depth() -> Tuple[Dict, Dict]:
     """Генерируем моковые данные о глубине стакана с небольшими вариациями"""
 
     # Добавляем случайные вариации к базовым данным
-    pm_depth = {"bids": [], "asks": []}
+    pm_depth: Dict[str, List[Dict[str, Any]]] = {"bids": [], "asks": []}
 
-    sx_depth = {"bids": [], "asks": []}
+    sx_depth: Dict[str, List[Dict[str, Any]]] = {"bids": [], "asks": []}
 
     # Генерируем данные для Polymarket
     for bid in MOCK_DEPTH_DATA["polymarket"]["bids"]:
