@@ -17,10 +17,10 @@ def test_reset_pnl_sets_zero():
 @pytest.mark.asyncio
 async def test_process_depth_does_not_reset_pnl():
     g_pnl.set(3.0)
-    
+
     # Тестируем с числовыми значениями глубины
     pm_depth = 2000.0  # 1000 + 1000
     sx_depth = 2000.0  # 1000 + 1000
-    
+
     await processor.process_depth(pm_depth, sx_depth)
     assert g_pnl._value.get() == 3.0
