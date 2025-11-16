@@ -25,7 +25,7 @@ def validate_orderbook(orderbook: dict) -> bool:
     if not isinstance(orderbook, dict):
         return False
 
-    required_keys = ['best_bid', 'best_ask', 'total_depth']
+    required_keys = ['best_bid', 'best_ask', 'bid_depth', 'ask_depth', 'total_depth']
     if not all(key in orderbook for key in required_keys):
         return False
 
@@ -44,6 +44,10 @@ def validate_orderbook(orderbook: dict) -> bool:
 
     # Check for valid depth
     if orderbook['total_depth'] < 0:
+        return False
+
+    # Check bid_depth and ask_depth are non-negative
+    if orderbook['bid_depth'] < 0 or orderbook['ask_depth'] < 0:
         return False
 
     return True
