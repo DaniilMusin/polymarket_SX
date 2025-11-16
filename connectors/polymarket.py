@@ -17,8 +17,21 @@ class OrderbookError(Exception):
 @retry()
 async def orderbook_depth(
     session: ClientSession, market_id: str, depth: int = 20
-) -> float:
-    """Return total USDC quantity in top-N bid levels (Yes side)."""
+) -> dict:
+    """
+    Return orderbook with best bid/ask prices and total depth.
+
+    Returns:
+        {
+            'best_bid': float,  # Best bid price
+            'best_ask': float,  # Best ask price
+            'bid_depth': float,  # Total USDC in bids
+            'ask_depth': float,  # Total USDC in asks
+            'total_depth': float,  # bid_depth + ask_depth
+            'bids': list,  # Raw bid data
+            'asks': list,  # Raw ask data
+        }
+    """
     try:
         # Fix: Add explicit timeout instead of using default
         timeout = aiohttp.ClientTimeout(total=10.0, connect=5.0)
@@ -37,12 +50,41 @@ async def orderbook_depth(
         raise OrderbookError(f"request failed: {exc}") from exc
 
     try:
-        bids = [float(lvl["quantity"]) for lvl in data["bids"]["Yes"][:depth]]
-        if not bids:
-            logging.warning("Polymarket returned empty bids list")
-            return 0.0
+        bids_yes = data["bids"]["Yes"][:depth]
+        asks_yes = data["asks"]["Yes"][:depth]
+
+        if not bids_yes or not asks_yes:
+            logging.warning("Polymarket returned empty bids or asks list")
+            return {
+                'best_bid': 0.0,
+                'best_ask': 0.0,
+                'bid_depth': 0.0,
+                'ask_depth': 0.0,
+                'total_depth': 0.0,
+                'bids': [],
+                'asks': [],
+            }
+
+        # Extract prices and quantities
+        bid_quantities = [float(lvl["quantity"]) for lvl in bids_yes]
+        ask_quantities = [float(lvl["quantity"]) for lvl in asks_yes]
+
+        # Best bid/ask prices (in Polymarket, price is probability 0-1)
+        best_bid_price = float(bids_yes[0]["price"])
+        best_ask_price = float(asks_yes[0]["price"])
+
+        bid_depth = sum(bid_quantities)
+        ask_depth = sum(ask_quantities)
+
+        return {
+            'best_bid': best_bid_price,
+            'best_ask': best_ask_price,
+            'bid_depth': bid_depth,
+            'ask_depth': ask_depth,
+            'total_depth': bid_depth + ask_depth,
+            'bids': bids_yes,
+            'asks': asks_yes,
+        }
     except (KeyError, ValueError, TypeError) as exc:
         logging.error("Polymarket bad response format: %s", exc, exc_info=True)
         raise OrderbookError(f"bad response format: {exc}") from exc
-
-    return sum(bids)

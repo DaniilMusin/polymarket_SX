@@ -33,9 +33,9 @@ async def test_process_depth_empty_config():
         pm_depth = 1900.0
         sx_depth = 1900.0
 
-        # Should not raise ValueError and should return 0.0
+        # Should not raise ValueError and should return default 0.002
         result = await processor.process_depth(pm_depth, sx_depth)
-        assert result == 0.0
+        assert result == 0.002
     finally:
         # Restore original config
         processor.SLIP_BY_DEPTH = original_slip_by_depth

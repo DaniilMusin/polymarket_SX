@@ -17,8 +17,21 @@ class KalshiError(Exception):
 @retry()
 async def orderbook_depth(
     session: ClientSession, market_id: str, depth: int = 20
-) -> float:
-    """Return total USDC quantity in top-N bid levels (Yes side)."""
+) -> dict:
+    """
+    Return orderbook with best bid/ask prices and total depth.
+
+    Returns:
+        {
+            'best_bid': float,  # Best bid price (0-1 probability)
+            'best_ask': float,  # Best ask price (0-1 probability)
+            'bid_depth': float,  # Total USDC in bids
+            'ask_depth': float,  # Total USDC in asks
+            'total_depth': float,  # bid_depth + ask_depth
+            'bids': list,  # Raw bid data
+            'asks': list,  # Raw ask data
+        }
+    """
     try:
         # Fix: Add explicit timeout instead of using default
         timeout = aiohttp.ClientTimeout(total=10.0, connect=5.0)
@@ -41,24 +54,48 @@ async def orderbook_depth(
 
     try:
         # Kalshi returns orderbook with yes/no bids as [price_cents, quantity] pairs
-        # Validate response structure - this will raise KeyError if format is wrong
         orderbook = data["orderbook"]
-        yes_bids = orderbook["yes"]
+        yes_bids = orderbook["yes"][:depth] if orderbook.get("yes") else []
+        no_bids = orderbook["no"][:depth] if orderbook.get("no") else []
 
-        if not yes_bids:
-            logging.warning("Kalshi returned empty yes bids list")
-            return 0.0
+        if not yes_bids or not no_bids:
+            logging.warning("Kalshi returned empty yes or no bids list")
+            return {
+                'best_bid': 0.0,
+                'best_ask': 0.0,
+                'bid_depth': 0.0,
+                'ask_depth': 0.0,
+                'total_depth': 0.0,
+                'bids': [],
+                'asks': [],
+            }
 
-        # Extract quantities from top-N bids and convert from cents
-        # Kalshi prices are in cents (0-100), quantities are in number of contracts
-        # Each contract is worth $1, so quantity = USDC value
-        bids = [float(bid[1]) for bid in yes_bids[:depth]]
+        # Kalshi prices are in cents (0-100), convert to probability (0-1)
+        # yes_bids are buy orders for YES (our bids)
+        # no_bids are buy orders for NO (inverse of asks for YES)
 
-        if not bids:
-            logging.warning("Kalshi returned empty bids list after processing")
-            return 0.0
+        # Extract quantities and prices
+        bid_quantities = [float(bid[1]) for bid in yes_bids]
+
+        # For asks, we use NO bids and convert: ask_price = 1 - no_bid_price
+        ask_quantities = [float(bid[1]) for bid in no_bids]
+
+        # Best prices (convert from cents to probability)
+        best_bid_price = float(yes_bids[0][0]) / 100.0
+        best_ask_price = 1.0 - (float(no_bids[0][0]) / 100.0)
+
+        bid_depth = sum(bid_quantities)
+        ask_depth = sum(ask_quantities)
+
+        return {
+            'best_bid': best_bid_price,
+            'best_ask': best_ask_price,
+            'bid_depth': bid_depth,
+            'ask_depth': ask_depth,
+            'total_depth': bid_depth + ask_depth,
+            'bids': yes_bids,
+            'asks': no_bids,
+        }
     except (KeyError, ValueError, TypeError, IndexError) as exc:
         logging.error("Kalshi bad response format: %s", exc, exc_info=True)
         raise KalshiError(f"bad response format: {exc}") from exc
-
-    return sum(bids)
