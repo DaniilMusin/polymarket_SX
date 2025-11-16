@@ -12,8 +12,7 @@ import logging
 import os
 from typing import Optional, Dict, Any
 from eth_account import Account
-from eth_account.messages import encode_defunct, encode_structured_data
-from web3 import Web3
+from eth_account.messages import encode_defunct, encode_typed_data
 
 
 class WalletError(Exception):
@@ -102,7 +101,7 @@ class Wallet:
             }
         """
         try:
-            encoded_data = encode_structured_data(typed_data)
+            encoded_data = encode_typed_data(typed_data)
             signed_message = self.account.sign_message(encoded_data)
             return signed_message.signature.hex()
         except Exception as exc:

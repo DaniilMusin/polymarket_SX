@@ -2,7 +2,7 @@ import logging
 from typing import Dict, List, Optional
 
 from config import SLIP_BY_DEPTH
-from core.metrics import g_edge, g_trades, g_pnl
+from core.metrics import g_edge, g_trades
 
 
 def calculate_total_depth(orderbook: Dict[str, List[Dict]]) -> float:

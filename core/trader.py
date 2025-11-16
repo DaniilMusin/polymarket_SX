@@ -68,8 +68,7 @@ async def place_order_polymarket(
         # Initialize order signer
         signer = PolymarketOrderSigner(wallet)
 
-        # Convert price and size to wei (6 decimals for USDC)
-        price_wei = int(price * 1e6)
+        # Convert size to wei (6 decimals for USDC)
         size_wei = int(size * 1e6)
 
         # Calculate maker and taker amounts
@@ -122,7 +121,9 @@ async def place_order_polymarket(
             headers['Authorization'] = f'Bearer {api_key}'
 
         timeout = aiohttp.ClientTimeout(total=10.0)
-        async with session.post(clob_url, json=order_payload, headers=headers, timeout=timeout) as resp:
+        async with session.post(
+            clob_url, json=order_payload, headers=headers, timeout=timeout
+        ) as resp:
             if resp.status == 200:
                 result = await resp.json()
                 logging.info("✅ Polymarket order placed: %s", result.get('orderID', 'unknown'))
@@ -220,7 +221,9 @@ async def place_order_sx(
             headers['X-API-Key'] = api_key
 
         timeout = aiohttp.ClientTimeout(total=10.0)
-        async with session.post(sx_url, json=order_payload, headers=headers, timeout=timeout) as resp:
+        async with session.post(
+            sx_url, json=order_payload, headers=headers, timeout=timeout
+        ) as resp:
             if resp.status == 200:
                 result = await resp.json()
                 logging.info("✅ SX order placed: %s", result.get('orderId', 'unknown'))
@@ -303,7 +306,9 @@ async def place_order_kalshi(
         }
 
         timeout = aiohttp.ClientTimeout(total=10.0)
-        async with session.post(kalshi_url, json=order_payload, headers=headers, timeout=timeout) as resp:
+        async with session.post(
+            kalshi_url, json=order_payload, headers=headers, timeout=timeout
+        ) as resp:
             if resp.status == 201:
                 result = await resp.json()
                 order_data = result.get('order', {})

@@ -110,8 +110,13 @@ async def test_kalshi_valid_response():
     }
     session = DummySession(data)
     result = await kalshi.orderbook_depth(session, "TEST_MARKET", depth=3)
-    # Should sum quantities: 100 + 200 + 150 = 450
-    assert result == 450.0
+    # Result is now a dict with orderbook structure
+    assert isinstance(result, dict)
+    assert 'total_depth' in result
+    # Should sum yes quantities: 100 + 200 + 150 = 450
+    # and no quantities: 100 + 200 = 300
+    # total = 450 + 300 = 750
+    assert result['total_depth'] == 750.0
 
 
 @pytest.mark.asyncio
@@ -120,4 +125,6 @@ async def test_kalshi_empty_bids():
     data = {"orderbook": {"yes": [], "no": [[51, 100]]}}
     session = DummySession(data)
     result = await kalshi.orderbook_depth(session, "TEST_MARKET")
-    assert result == 0.0
+    # Result is now a dict
+    assert isinstance(result, dict)
+    assert result['total_depth'] == 0.0
