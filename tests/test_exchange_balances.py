@@ -265,3 +265,70 @@ def test_thread_safety():
     assert len(errors) == 0
     assert manager.get_balance('polymarket') == 100.0
     assert manager.get_locked_balance('polymarket') == 0.0
+
+
+def test_skip_balance_check_parameter():
+    """Test that _skip_balance_check parameter works correctly."""
+    from core.trader import InsufficientBalanceError as TraderInsufficientError
+    from unittest.mock import MagicMock, patch
+    import asyncio
+
+    # This test ensures that when _skip_balance_check=True is passed,
+    # the balance check is skipped even if balance is insufficient
+
+    reset_balance_manager()
+    os.environ['EXCHANGE_INITIAL_BALANCE'] = '5.0'  # Set low balance
+
+    # Mock the actual order placement to avoid API calls
+    async def mock_order():
+        from core.trader import place_order_polymarket
+
+        session = MagicMock()
+        wallet = MagicMock()
+        wallet.address = "0x1234"
+
+        # Create a simple mock signer
+        with patch('core.trader.PolymarketOrderSigner'):
+            # This should raise InsufficientBalanceError because balance is only $5
+            try:
+                await place_order_polymarket(
+                    session=session,
+                    market_id='test',
+                    token_id='test_token',
+                    side='buy',
+                    price=0.5,
+                    size=10.0,  # Requires $10, but only $5 available
+                    wallet=wallet,
+                    _skip_balance_check=False  # Check should fail
+                )
+                assert False, "Should have raised InsufficientBalanceError"
+            except TraderInsufficientError:
+                pass  # Expected
+
+            # Now with _skip_balance_check=True, should not raise
+            # (will fail later in actual execution, but balance check is skipped)
+            try:
+                with patch('aiohttp.ClientSession.post') as mock_post:
+                    mock_response = MagicMock()
+                    mock_response.status = 200
+                    mock_response.json = asyncio.coroutine(
+                        lambda: {'orderID': 'test123', 'status': 'FILLED'}
+                    )
+                    mock_post.return_value.__aenter__.return_value = mock_response
+
+                    result = await place_order_polymarket(
+                        session=session,
+                        market_id='test',
+                        token_id='test_token',
+                        side='buy',
+                        price=0.5,
+                        size=10.0,  # Requires $10, but only $5 available
+                        wallet=wallet,
+                        _skip_balance_check=True  # Skip check
+                    )
+                    # Should succeed (balance check was skipped)
+                    assert result['status'] == 'success'
+            except TraderInsufficientError:
+                assert False, "Should not raise when _skip_balance_check=True"
+
+    asyncio.run(mock_order())
