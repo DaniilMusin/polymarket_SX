@@ -23,6 +23,65 @@ class TradeExecutionError(Exception):
     """Raised when trade execution fails."""
 
 
+def check_ioc_order_filled(response: Dict, exchange: str, order_type: str = 'IOC') -> bool:
+    """
+    Check if IOC order was successfully filled.
+
+    For IOC (Immediate Or Cancel) orders, we need to verify the order was actually filled,
+    not just accepted by the API. IOC orders can return 200 OK but be CANCELLED due to
+    insufficient liquidity.
+
+    Args:
+        response: API response dictionary
+        exchange: Exchange name ('polymarket', 'sx', 'kalshi')
+        order_type: Order type ('IOC' or 'LIMIT')
+
+    Returns:
+        True if filled or if order_type is not IOC
+
+    Raises:
+        TradeExecutionError: If IOC order was not filled
+    """
+    # Only check for IOC orders
+    if order_type != 'IOC':
+        return True
+
+    # Extract status field based on exchange
+    status = None
+    if exchange == 'polymarket':
+        # Polymarket: 'status' field with values: LIVE, MATCHED, FILLED, CANCELLED
+        status = response.get('status')
+    elif exchange == 'sx':
+        # SX: 'state' field with values: PENDING, FILLED, CANCELLED, EXPIRED
+        status = response.get('state')
+    elif exchange == 'kalshi':
+        # Kalshi: order.status with values: resting, filled, cancelled
+        order_data = response.get('order', {})
+        status = order_data.get('status')
+
+    # If no status field found, log warning but assume success
+    # (API structure might be different than expected)
+    if not status:
+        logging.warning(
+            "%s: No status field in response for IOC order. "
+            "Cannot verify if order was filled. Response keys: %s",
+            exchange, list(response.keys())
+        )
+        return True
+
+    # For IOC: only FILLED/MATCHED statuses are acceptable
+    filled_statuses = ['FILLED', 'filled', 'MATCHED', 'matched']
+    if status not in filled_statuses:
+        raise TradeExecutionError(
+            f"{exchange} IOC order not filled! Status: {status}. "
+            f"Order was likely cancelled due to insufficient liquidity. "
+            f"This would create an unhedged position."
+        )
+
+    logging.info("%s: IOC order confirmed filled (status: %s)", exchange, status)
+    return True
+
+
 async def place_order_polymarket(
     session: ClientSession,
     market_id: str,
@@ -170,6 +229,10 @@ async def place_order_polymarket(
                     )
 
                 logging.info("✅ Polymarket order placed: %s", order_id)
+
+                # Check if IOC order was actually filled (not just accepted)
+                check_ioc_order_filled(result, 'polymarket', order_type)
+
                 return {
                     'status': 'success',
                     'exchange': 'polymarket',
@@ -301,6 +364,10 @@ async def place_order_sx(
                     )
 
                 logging.info("✅ SX order placed: %s", order_id)
+
+                # Check if IOC order was actually filled (not just accepted)
+                check_ioc_order_filled(result, 'sx', order_type)
+
                 return {
                     'status': 'success',
                     'exchange': 'sx',
@@ -420,6 +487,10 @@ async def place_order_kalshi(
                     )
 
                 logging.info("✅ Kalshi order placed: %s", order_id)
+
+                # Check if IOC order was actually filled (not just accepted)
+                check_ioc_order_filled(result, 'kalshi', order_type)
+
                 return {
                     'status': 'success',
                     'exchange': 'kalshi',
