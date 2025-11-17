@@ -29,10 +29,15 @@ async def place_order_polymarket(
     price: float,
     size: float,
     wallet: Optional[Wallet] = None,
-    api_key: Optional[str] = None
+    api_key: Optional[str] = None,
+    order_type: str = 'IOC'  # 'IOC' (Immediate Or Cancel) or 'LIMIT'
 ) -> Dict:
     """
     Place an order on Polymarket CLOB with EIP-712 signing.
+
+    IMPORTANT: For arbitrage, uses IOC (Immediate Or Cancel) orders by default.
+    This ensures the order executes immediately against existing liquidity
+    in the orderbook, or is cancelled if liquidity is insufficient.
 
     Args:
         session: aiohttp ClientSession
@@ -43,6 +48,7 @@ async def place_order_polymarket(
         size: Order size in USDC
         wallet: Wallet for signing orders
         api_key: API key for authentication (optional)
+        order_type: 'IOC' for immediate execution (default) or 'LIMIT' for limit order
 
     Returns:
         Order response dictionary
@@ -86,8 +92,13 @@ async def place_order_polymarket(
         # Get current nonce (in production, fetch from API)
         nonce = int(time.time() * 1000)
 
-        # Order expires in 30 days
-        expiration = int(time.time()) + (30 * 24 * 60 * 60)
+        # Set expiration based on order type
+        if order_type == 'IOC':
+            # IOC orders expire in 5 seconds (immediate execution)
+            expiration = int(time.time()) + 5
+        else:
+            # LIMIT orders expire in 30 days
+            expiration = int(time.time()) + (30 * 24 * 60 * 60)
 
         # Sign the order
         signature = signer.sign_order(
@@ -110,7 +121,14 @@ async def place_order_polymarket(
             'signature': signature,
             'nonce': nonce,
             'expiration': expiration,
+            'postOnly': False,  # Allow taking liquidity (taker order)
         }
+
+        # Log order type for monitoring
+        logging.info(
+            "Placing %s %s order on Polymarket: %s @ %.4f, size: %.2f",
+            order_type, side.upper(), token_id[:8], price, size
+        )
 
         # Post order to Polymarket CLOB API
         clob_url = "https://clob.polymarket.com/orders"
@@ -156,10 +174,14 @@ async def place_order_sx(
     price: float,
     size: float,
     wallet: Optional[Wallet] = None,
-    api_key: Optional[str] = None
+    api_key: Optional[str] = None,
+    order_type: str = 'IOC'  # 'IOC' for immediate execution or 'LIMIT'
 ) -> Dict:
     """
     Place an order on SX with wallet signing.
+
+    IMPORTANT: For arbitrage, uses IOC orders by default to ensure
+    immediate execution against existing liquidity.
 
     Args:
         session: aiohttp ClientSession
@@ -169,6 +191,7 @@ async def place_order_sx(
         size: Order size in USDC
         wallet: Wallet for signing transactions
         api_key: API key for authentication
+        order_type: 'IOC' for immediate execution (default) or 'LIMIT'
 
     Returns:
         Order response dictionary
@@ -195,15 +218,29 @@ async def place_order_sx(
         # For simplicity, we'll show the structure
         # In production, you'd use web3.py to interact with contracts
 
+        # Configure order based on type
+        if order_type == 'IOC':
+            fill_or_kill = True  # Execute immediately or cancel
+            post_only = False    # Allow taking liquidity
+        else:
+            fill_or_kill = False  # Allow partial fills over time
+            post_only = True      # Only add liquidity (maker)
+
         order_payload = {
             'marketHash': market_id,
             'maker': wallet.address,
             'price': str(price),
             'amount': str(size),
             'isBuy': side.lower() == 'buy',
-            'fillOrKill': False,
-            'postOnly': True,
+            'fillOrKill': fill_or_kill,
+            'postOnly': post_only,
         }
+
+        # Log order type for monitoring
+        logging.info(
+            "Placing %s %s order on SX: %s @ %.4f, size: %.2f (fillOrKill=%s)",
+            order_type, side.upper(), market_id[:16], price, size, fill_or_kill
+        )
 
         # Sign the order data (simplified)
         # In production: sign with web3.py contract interaction
@@ -255,10 +292,13 @@ async def place_order_kalshi(
     side: str,  # 'buy' or 'sell'
     price: float,
     size: int,  # Number of contracts
-    api_key: Optional[str] = None
+    api_key: Optional[str] = None,
+    order_type: str = 'IOC'  # 'IOC' for immediate execution or 'LIMIT'
 ) -> Dict:
     """
     Place an order on Kalshi with API key authentication.
+
+    IMPORTANT: For arbitrage, uses IOC orders by default for immediate execution.
 
     Args:
         session: aiohttp ClientSession
@@ -267,6 +307,7 @@ async def place_order_kalshi(
         price: Order price in cents (0-100)
         size: Number of contracts
         api_key: API key for authentication
+        order_type: 'IOC' for immediate execution (default) or 'LIMIT'
 
     Returns:
         Order response dictionary
@@ -290,14 +331,26 @@ async def place_order_kalshi(
 
     try:
         # Kalshi uses standard REST API with authentication
+        # Map order type to Kalshi terminology
+        if order_type == 'IOC':
+            kalshi_type = 'market'  # Market orders execute immediately
+        else:
+            kalshi_type = 'limit'  # Limit orders wait in orderbook
+
         order_payload = {
             'ticker': market_id,
             'action': 'buy' if side.lower() == 'buy' else 'sell',
             'side': 'yes',  # Assuming yes side
             'yes_price': int(price),  # Price in cents
             'count': size,
-            'type': 'limit',
+            'type': kalshi_type,
         }
+
+        # Log order type for monitoring
+        logging.info(
+            "Placing %s (%s) %s order on Kalshi: %s @ %.0f cents, count: %d",
+            order_type, kalshi_type, side.upper(), market_id, price, size
+        )
 
         kalshi_url = "https://trading-api.kalshi.com/trade-api/v2/portfolio/orders"
         headers = {
@@ -394,30 +447,34 @@ async def execute_arbitrage_trade(
 
         return result
 
-    # Place actual orders
+    # Place actual orders (using IOC for immediate execution)
     try:
-        # Place buy order
+        # Place buy order - takes liquidity from orderbook immediately
         if buy_exchange == 'polymarket':
             if not pm_token_id:
                 raise TradeExecutionError("Polymarket token_id required for real trading")
             buy_order = await place_order_polymarket(
-                session, pm_market_id, pm_token_id, 'buy', buy_price, size, wallet, pm_api_key
+                session, pm_market_id, pm_token_id, 'buy', buy_price, size,
+                wallet, pm_api_key, order_type='IOC'
             )
         else:  # sx
             buy_order = await place_order_sx(
-                session, sx_market_id, 'buy', buy_price, size, wallet, sx_api_key
+                session, sx_market_id, 'buy', buy_price, size,
+                wallet, sx_api_key, order_type='IOC'
             )
 
-        # Place sell order
+        # Place sell order - takes liquidity from orderbook immediately
         if sell_exchange == 'polymarket':
             if not pm_token_id:
                 raise TradeExecutionError("Polymarket token_id required for real trading")
             sell_order = await place_order_polymarket(
-                session, pm_market_id, pm_token_id, 'sell', sell_price, size, wallet, pm_api_key
+                session, pm_market_id, pm_token_id, 'sell', sell_price, size,
+                wallet, pm_api_key, order_type='IOC'
             )
         else:  # sx
             sell_order = await place_order_sx(
-                session, sx_market_id, 'sell', sell_price, size, wallet, sx_api_key
+                session, sx_market_id, 'sell', sell_price, size,
+                wallet, sx_api_key, order_type='IOC'
             )
 
         # Update metrics for real trade
