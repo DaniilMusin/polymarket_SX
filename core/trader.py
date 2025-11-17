@@ -574,12 +574,87 @@ async def execute_arbitrage_trade(
 
     Returns:
         Trade execution result dictionary
+
+    Raises:
+        TradeExecutionError: If trade execution fails
+        ValueError: If invalid parameters provided
     """
+    # ==================== INPUT VALIDATION (CRITICAL!) ====================
+    # Validate opportunity dict to prevent runtime errors
+    if not opportunity or not isinstance(opportunity, dict):
+        raise ValueError("Invalid opportunity: must be a non-empty dictionary")
+
+    required_keys = ['buy_exchange', 'sell_exchange', 'buy_price', 'sell_price', 'position_size']
+    missing_keys = [key for key in required_keys if key not in opportunity]
+    if missing_keys:
+        raise ValueError(f"Invalid opportunity: missing required keys: {missing_keys}")
+
     buy_exchange = opportunity['buy_exchange']
     sell_exchange = opportunity['sell_exchange']
     buy_price = opportunity['buy_price']
     sell_price = opportunity['sell_price']
     size = opportunity['position_size']
+
+    # Validate types
+    if not isinstance(buy_exchange, str) or not isinstance(sell_exchange, str):
+        raise ValueError(
+            f"Exchange names must be strings: "
+            f"buy_exchange={type(buy_exchange).__name__}, "
+            f"sell_exchange={type(sell_exchange).__name__}"
+        )
+
+    if not isinstance(buy_price, (int, float)) or not isinstance(sell_price, (int, float)):
+        raise ValueError(
+            f"Prices must be numeric: "
+            f"buy_price={type(buy_price).__name__}, "
+            f"sell_price={type(sell_price).__name__}"
+        )
+
+    if not isinstance(size, (int, float)):
+        raise ValueError(f"Size must be numeric: size={type(size).__name__}")
+
+    # Validate exchange names
+    valid_exchanges = {'polymarket', 'sx', 'kalshi'}
+    buy_exchange_lower = buy_exchange.lower()
+    sell_exchange_lower = sell_exchange.lower()
+
+    if buy_exchange_lower not in valid_exchanges:
+        raise ValueError(
+            f"Invalid buy_exchange: '{buy_exchange}'. "
+            f"Must be one of: {', '.join(valid_exchanges)}"
+        )
+
+    if sell_exchange_lower not in valid_exchanges:
+        raise ValueError(
+            f"Invalid sell_exchange: '{sell_exchange}'. "
+            f"Must be one of: {', '.join(valid_exchanges)}"
+        )
+
+    # CRITICAL: exchanges must be different for arbitrage
+    if buy_exchange_lower == sell_exchange_lower:
+        raise ValueError(
+            f"Invalid arbitrage: buy and sell exchanges must be different "
+            f"(both are '{buy_exchange}'). This would cause double balance reservation!"
+        )
+
+    # Validate size
+    if size <= 0:
+        raise ValueError(f"Invalid position size: {size}. Size must be positive.")
+
+    # Validate prices
+    if buy_price <= 0 or sell_price <= 0:
+        raise ValueError(
+            f"Invalid prices: buy_price={buy_price}, sell_price={sell_price}. "
+            "Prices must be positive."
+        )
+
+    # Validate arbitrage logic (buy must be cheaper than sell)
+    if buy_price >= sell_price:
+        raise ValueError(
+            f"Invalid arbitrage: buy_price ({buy_price}) >= sell_price ({sell_price}). "
+            "This would result in a loss, not a profit!"
+        )
+    # ======================== END VALIDATION ========================
 
     logging.info(
         "Executing arbitrage trade: Buy %s @ %.4f, Sell %s @ %.4f, Size: $%.2f",

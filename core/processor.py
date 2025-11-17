@@ -167,7 +167,22 @@ def find_arbitrage_opportunity(
     )
 
     # Limit position size to avoid excessive slippage
-    position_size = min(max_size * 0.1, 1000.0)  # Max 10% of depth or $1000
+    # CRITICAL: Also limit by available balance on BOTH exchanges!
+    from core.exchange_balances import get_balance_manager
+    try:
+        balance_manager = get_balance_manager()
+        max_buy_balance = balance_manager.get_balance(buy_exchange)
+        max_sell_balance = balance_manager.get_balance(sell_exchange)
+        max_balance = min(max_buy_balance, max_sell_balance)
+
+        # Position size is limited by:
+        # 1. Market depth (10% to avoid slippage)
+        # 2. Hard cap of $1000
+        # 3. Available balance on BOTH exchanges (CRITICAL!)
+        position_size = min(max_size * 0.1, 1000.0, max_balance)
+    except Exception:
+        # If balance manager not available, use old logic
+        position_size = min(max_size * 0.1, 1000.0)  # Max 10% of depth or $1000
 
     # Check minimum position size (avoid zero or very small positions)
     min_position_size = 0.01  # Minimum $0.01
