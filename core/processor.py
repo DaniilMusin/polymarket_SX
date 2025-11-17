@@ -159,6 +159,15 @@ def find_arbitrage_opportunity(
     # Limit position size to avoid excessive slippage
     position_size = min(max_size * 0.1, 1000.0)  # Max 10% of depth or $1000
 
+    # Check minimum position size (avoid zero or very small positions)
+    min_position_size = 0.01  # Minimum $0.01
+    if position_size < min_position_size:
+        logging.debug(
+            "Position size too small: $%.6f < $%.2f, skipping arbitrage",
+            position_size, min_position_size
+        )
+        return None
+
     opportunity = {
         'buy_exchange': buy_exchange,
         'sell_exchange': sell_exchange,

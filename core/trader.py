@@ -13,7 +13,7 @@ from typing import Optional, Dict
 from aiohttp import ClientSession
 import aiohttp
 
-from core.metrics import g_trades, g_pnl
+from core.metrics import g_trades, update_pnl
 from core.wallet import Wallet, PolymarketOrderSigner, WalletError
 
 
@@ -71,6 +71,16 @@ async def place_order_polymarket(
         }
 
     try:
+        # Validate price range for probability markets
+        if not (0 < price <= 1.0):
+            raise ValueError(
+                f"Invalid price: {price}. Price must be in range (0, 1] for probability markets"
+            )
+
+        # Validate size
+        if size <= 0:
+            raise ValueError(f"Invalid size: {size}. Size must be positive")
+
         # Initialize order signer
         signer = PolymarketOrderSigner(wallet)
 
@@ -82,10 +92,10 @@ async def place_order_polymarket(
         # For SELL order: maker provides tokens, taker provides USDC
         if side.lower() == 'buy':
             maker_amount = size_wei  # USDC
-            taker_amount = int(size_wei / price)  # Tokens
+            taker_amount = int(size_wei / price)  # Tokens (safe: price > 0 validated above)
             order_side = 0  # BUY
         else:
-            maker_amount = int(size_wei / price)  # Tokens
+            maker_amount = int(size_wei / price)  # Tokens (safe: price > 0 validated above)
             taker_amount = size_wei  # USDC
             order_side = 1  # SELL
 
@@ -438,7 +448,7 @@ async def execute_arbitrage_trade(
 
         # Update metrics for simulated trade
         g_trades.inc()
-        g_pnl.set(g_pnl._value._value + opportunity['expected_pnl'])
+        update_pnl(opportunity['expected_pnl'])
 
         logging.info(
             "✅ Simulated trade executed. Expected PnL: $%.2f",
@@ -479,7 +489,7 @@ async def execute_arbitrage_trade(
 
         # Update metrics for real trade
         g_trades.inc()
-        g_pnl.set(g_pnl._value._value + opportunity['expected_pnl'])
+        update_pnl(opportunity['expected_pnl'])
 
         result = {
             'status': 'executed',
