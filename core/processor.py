@@ -29,8 +29,17 @@ def validate_orderbook(orderbook: dict) -> bool:
     if not all(key in orderbook for key in required_keys):
         return False
 
-    # Check for valid prices
+    # Check for valid prices (must be positive)
     if orderbook['best_bid'] <= 0 or orderbook['best_ask'] <= 0:
+        return False
+
+    # Check prices are in valid range [0, 1] for probability markets
+    if orderbook['best_bid'] > 1.0 or orderbook['best_ask'] > 1.0:
+        logging.warning(
+            "Invalid orderbook: prices out of range [0,1]: bid=%.4f, ask=%.4f",
+            orderbook['best_bid'],
+            orderbook['best_ask']
+        )
         return False
 
     # Check bid < ask

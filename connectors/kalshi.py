@@ -54,9 +54,31 @@ async def orderbook_depth(
 
     try:
         # Kalshi returns orderbook with yes/no bids as [price_cents, quantity] pairs
+        # Check required keys exist (bad JSON if missing)
+        if "orderbook" not in data:
+            raise KalshiError(f"bad response format: missing orderbook")
+
         orderbook = data["orderbook"]
-        yes_bids = orderbook["yes"][:depth] if orderbook.get("yes") else []
-        no_bids = orderbook["no"][:depth] if orderbook.get("no") else []
+
+        # Handle None value
+        if orderbook is None:
+            orderbook = {}
+
+        # Check for yes/no keys
+        if "yes" not in orderbook or "no" not in orderbook:
+            raise KalshiError(f"bad response format: missing orderbook['yes'] or orderbook['no']")
+
+        yes_bids_raw = orderbook["yes"]
+        no_bids_raw = orderbook["no"]
+
+        # Handle None values
+        if yes_bids_raw is None:
+            yes_bids_raw = []
+        if no_bids_raw is None:
+            no_bids_raw = []
+
+        yes_bids = yes_bids_raw[:depth] if yes_bids_raw else []
+        no_bids = no_bids_raw[:depth] if no_bids_raw else []
 
         if not yes_bids or not no_bids:
             logging.warning("Kalshi returned empty yes or no bids list")

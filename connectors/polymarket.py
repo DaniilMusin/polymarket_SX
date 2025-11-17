@@ -50,8 +50,36 @@ async def orderbook_depth(
         raise OrderbookError(f"request failed: {exc}") from exc
 
     try:
-        bids_yes = data["bids"]["Yes"][:depth]
-        asks_yes = data["asks"]["Yes"][:depth]
+        # Check required keys exist (bad JSON if missing)
+        if "bids" not in data or "asks" not in data:
+            raise OrderbookError(f"bad response format: missing bids or asks")
+
+        # Safely extract bids and asks with None checks
+        bids_data = data["bids"]
+        asks_data = data["asks"]
+
+        # Handle None values
+        if bids_data is None:
+            bids_data = {}
+        if asks_data is None:
+            asks_data = {}
+
+        # Check for "Yes" key
+        if "Yes" not in bids_data or "Yes" not in asks_data:
+            raise OrderbookError(f"bad response format: missing bids['Yes'] or asks['Yes']")
+
+        bids_yes = bids_data["Yes"]
+        asks_yes = asks_data["Yes"]
+
+        # Handle None values
+        if bids_yes is None:
+            bids_yes = []
+        if asks_yes is None:
+            asks_yes = []
+
+        # Limit depth
+        bids_yes = bids_yes[:depth] if bids_yes else []
+        asks_yes = asks_yes[:depth] if asks_yes else []
 
         if not bids_yes or not asks_yes:
             logging.warning("Polymarket returned empty bids or asks list")

@@ -50,8 +50,23 @@ async def orderbook_depth(
         raise SxError(f"request failed: {exc}") from exc
 
     try:
-        bids_data = data["bids"][:depth]
-        asks_data = data["asks"][:depth]
+        # Check required keys exist (bad JSON if missing)
+        if "bids" not in data or "asks" not in data:
+            raise SxError(f"bad response format: missing bids or asks")
+
+        # Safely extract bids and asks with None checks
+        bids_raw = data["bids"]
+        asks_raw = data["asks"]
+
+        # Handle None values
+        if bids_raw is None:
+            bids_raw = []
+        if asks_raw is None:
+            asks_raw = []
+
+        # Limit depth
+        bids_data = bids_raw[:depth] if bids_raw else []
+        asks_data = asks_raw[:depth] if asks_raw else []
 
         if not bids_data or not asks_data:
             logging.warning("SX returned empty bids or asks list")
