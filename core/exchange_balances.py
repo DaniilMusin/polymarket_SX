@@ -68,7 +68,9 @@ class ExchangeBalanceManager:
             Available balance in USD
         """
         with self._lock:
-            return self._balances.get(exchange.lower(), 0.0)
+            balance = self._balances.get(exchange.lower(), 0.0)
+            logging.debug("Get balance for %s: $%.2f", exchange, balance)
+            return balance
 
     def get_locked_balance(self, exchange: str) -> float:
         """
@@ -111,7 +113,12 @@ class ExchangeBalanceManager:
         """
         with self._lock:
             available = self._balances.get(exchange.lower(), 0.0)
-            return available >= amount
+            sufficient = available >= amount
+            logging.debug(
+                "Check balance for %s: required=$%.2f, available=$%.2f, sufficient=%s",
+                exchange, amount, available, sufficient
+            )
+            return sufficient
 
     def reserve_balance(self, exchange: str, amount: float) -> None:
         """
@@ -259,6 +266,7 @@ def get_balance_manager() -> ExchangeBalanceManager:
     """
     global _balance_manager
     if _balance_manager is None:
+        logging.info("Initializing global balance manager")
         _balance_manager = ExchangeBalanceManager()
     return _balance_manager
 
@@ -266,4 +274,5 @@ def get_balance_manager() -> ExchangeBalanceManager:
 def reset_balance_manager() -> None:
     """Reset the global balance manager (useful for testing)."""
     global _balance_manager
+    logging.info("Resetting global balance manager")
     _balance_manager = None

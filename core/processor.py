@@ -23,14 +23,22 @@ def validate_orderbook(orderbook: dict) -> bool:
         True if valid, False otherwise
     """
     if not isinstance(orderbook, dict):
+        logging.warning("Invalid orderbook: not a dictionary (type: %s)", type(orderbook).__name__)
         return False
 
     required_keys = ['best_bid', 'best_ask', 'bid_depth', 'ask_depth', 'total_depth']
     if not all(key in orderbook for key in required_keys):
+        missing_keys = [key for key in required_keys if key not in orderbook]
+        logging.warning("Invalid orderbook: missing keys: %s", missing_keys)
         return False
 
     # Check for valid prices (must be positive)
     if orderbook['best_bid'] <= 0 or orderbook['best_ask'] <= 0:
+        logging.warning(
+            "Invalid orderbook: non-positive prices: bid=%.4f, ask=%.4f",
+            orderbook['best_bid'],
+            orderbook['best_ask']
+        )
         return False
 
     # Check prices are in valid range [0, 1] for probability markets
@@ -53,12 +61,19 @@ def validate_orderbook(orderbook: dict) -> bool:
 
     # Check for valid depth
     if orderbook['total_depth'] < 0:
+        logging.warning("Invalid orderbook: negative total_depth: %.2f", orderbook['total_depth'])
         return False
 
     # Check bid_depth and ask_depth are non-negative
     if orderbook['bid_depth'] < 0 or orderbook['ask_depth'] < 0:
+        logging.warning(
+            "Invalid orderbook: negative depth: bid_depth=%.2f, ask_depth=%.2f",
+            orderbook['bid_depth'],
+            orderbook['ask_depth']
+        )
         return False
 
+    logging.debug("Orderbook validated successfully: bid=%.4f, ask=%.4f", orderbook['best_bid'], orderbook['best_ask'])
     return True
 
 
@@ -113,8 +128,14 @@ def find_arbitrage_opportunity(
     Returns:
         Dictionary with arbitrage details or None if no opportunity
     """
+    logging.debug("Finding arbitrage opportunity between PM and SX")
+
     # Validate orderbooks
-    if not validate_orderbook(pm_book) or not validate_orderbook(sx_book):
+    if not validate_orderbook(pm_book):
+        logging.warning("Polymarket orderbook validation failed")
+        return None
+    if not validate_orderbook(sx_book):
+        logging.warning("SX orderbook validation failed")
         return None
 
     # Calculate slippage based on depth
