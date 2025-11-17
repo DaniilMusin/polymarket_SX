@@ -12,6 +12,11 @@ from connectors import polymarket, sx, kalshi  # noqa: F401
 async def main() -> None:
     logging.basicConfig(level=logging.INFO)
     logging.getLogger().addHandler(TelegramHandler())
+
+    logging.info("=" * 80)
+    logging.info("🚀 Starting Polymarket-SX Arbitrage Bot")
+    logging.info("=" * 80)
+
     init_metrics()
 
     try:
@@ -78,7 +83,14 @@ async def main() -> None:
             else:
                 logging.info("No arbitrage opportunity found")
 
+            logging.info("=" * 80)
+            logging.info("✅ Bot cycle completed successfully")
+            logging.info("=" * 80)
+
     except Exception as exc:
+        logging.error("=" * 80)
+        logging.error("❌ Bot terminated with error")
+        logging.error("=" * 80)
         logging.error("Unexpected error in main: %s", exc, exc_info=True)
         raise
 
