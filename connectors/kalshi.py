@@ -33,8 +33,8 @@ async def orderbook_depth(
         }
     """
     try:
-        # Fix: Add explicit timeout instead of using default
-        timeout = aiohttp.ClientTimeout(total=10.0, connect=5.0)
+        # Use 30 second timeout to handle slow networks and busy exchanges
+        timeout = aiohttp.ClientTimeout(total=30.0, connect=10.0)
         params = {"depth": depth} if depth > 0 else {}
         async with session.get(
             f"{API_BASE}/markets/{market_id}/orderbook",

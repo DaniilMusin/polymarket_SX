@@ -152,11 +152,19 @@ class Wallet:
             Store the private key securely! It will be lost if not saved.
         """
         account = Account.create()
+        private_key_hex = account.key.hex()
         logging.warning(
             "Created new wallet: %s (SAVE THE PRIVATE KEY SECURELY!)",
             account.address
         )
-        return Wallet(private_key=account.key.hex())
+        logging.warning(
+            "⚠️  PRIVATE KEY: %s",
+            private_key_hex
+        )
+        logging.warning(
+            "⚠️  SAVE THIS KEY IMMEDIATELY! IT WILL NOT BE SHOWN AGAIN!"
+        )
+        return Wallet(private_key=private_key_hex)
 
 
 class PolymarketOrderSigner:
@@ -236,15 +244,32 @@ class PolymarketOrderSigner:
             Order signature as hex string
         """
         import time
+        import random
 
-        salt = int(time.time() * 1000)  # Timestamp in ms as salt
+        # Generate salt with random component to prevent collisions
+        # If two orders are created within 1ms, the random component ensures uniqueness
+        salt = int(time.time() * 1000) + random.randint(0, 1000000)
+
+        # Safely convert tokenId with validation
+        try:
+            if isinstance(token_id, str):
+                # Try to parse as hex string
+                token_id_int = int(token_id, 16)
+            else:
+                token_id_int = int(token_id)
+
+            # Validate token_id is non-negative
+            if token_id_int < 0:
+                raise ValueError(f"tokenId must be non-negative, got: {token_id_int}")
+        except ValueError as exc:
+            raise WalletError(f"Invalid tokenId '{token_id}': {exc}") from exc
 
         order_message = {
             "salt": salt,
             "maker": self.wallet.address,
             "signer": self.wallet.address,
             "taker": taker,
-            "tokenId": int(token_id, 16) if isinstance(token_id, str) else token_id,
+            "tokenId": token_id_int,
             "makerAmount": maker_amount,
             "takerAmount": taker_amount,
             "expiration": expiration,

@@ -9,6 +9,8 @@ This module provides order placement with cryptographic signing:
 
 import logging
 import time
+import random
+import asyncio
 from typing import Optional, Dict
 from aiohttp import ClientSession
 import aiohttp
@@ -99,8 +101,9 @@ async def place_order_polymarket(
             taker_amount = size_wei  # USDC
             order_side = 1  # SELL
 
-        # Get current nonce (in production, fetch from API)
-        nonce = int(time.time() * 1000)
+        # Get current nonce with random component to prevent collisions
+        # If two orders are created within 1ms, the random component ensures uniqueness
+        nonce = int(time.time() * 1000) + random.randint(0, 1000000)
 
         # Set expiration based on order type
         if order_type == 'IOC':
@@ -148,17 +151,29 @@ async def place_order_polymarket(
         if api_key:
             headers['Authorization'] = f'Bearer {api_key}'
 
-        timeout = aiohttp.ClientTimeout(total=10.0)
+        # Use 30 second timeout to handle slow networks and busy exchanges
+        timeout = aiohttp.ClientTimeout(total=30.0)
         async with session.post(
             clob_url, json=order_payload, headers=headers, timeout=timeout
         ) as resp:
             if resp.status == 200:
                 result = await resp.json()
-                logging.info("✅ Polymarket order placed: %s", result.get('orderID', 'unknown'))
+
+                # Validate API response
+                if 'error' in result:
+                    raise TradeExecutionError(f"Polymarket API error: {result['error']}")
+
+                order_id = result.get('orderID')
+                if not order_id:
+                    raise TradeExecutionError(
+                        f"No orderID in response. Response: {result}"
+                    )
+
+                logging.info("✅ Polymarket order placed: %s", order_id)
                 return {
                     'status': 'success',
                     'exchange': 'polymarket',
-                    'order_id': result.get('orderID'),
+                    'order_id': order_id,
                     'market_id': market_id,
                     'side': side,
                     'price': price,
@@ -267,17 +282,29 @@ async def place_order_sx(
         if api_key:
             headers['X-API-Key'] = api_key
 
-        timeout = aiohttp.ClientTimeout(total=10.0)
+        # Use 30 second timeout to handle slow networks and busy exchanges
+        timeout = aiohttp.ClientTimeout(total=30.0)
         async with session.post(
             sx_url, json=order_payload, headers=headers, timeout=timeout
         ) as resp:
             if resp.status == 200:
                 result = await resp.json()
-                logging.info("✅ SX order placed: %s", result.get('orderId', 'unknown'))
+
+                # Validate API response
+                if 'error' in result:
+                    raise TradeExecutionError(f"SX API error: {result['error']}")
+
+                order_id = result.get('orderId')
+                if not order_id:
+                    raise TradeExecutionError(
+                        f"No orderId in response. Response: {result}"
+                    )
+
+                logging.info("✅ SX order placed: %s", order_id)
                 return {
                     'status': 'success',
                     'exchange': 'sx',
-                    'order_id': result.get('orderId'),
+                    'order_id': order_id,
                     'market_id': market_id,
                     'side': side,
                     'price': price,
@@ -368,18 +395,35 @@ async def place_order_kalshi(
             'Authorization': f'Bearer {api_key}',
         }
 
-        timeout = aiohttp.ClientTimeout(total=10.0)
+        # Use 30 second timeout to handle slow networks and busy exchanges
+        timeout = aiohttp.ClientTimeout(total=30.0)
         async with session.post(
             kalshi_url, json=order_payload, headers=headers, timeout=timeout
         ) as resp:
             if resp.status == 201:
                 result = await resp.json()
+
+                # Validate API response
+                if 'error' in result:
+                    raise TradeExecutionError(f"Kalshi API error: {result['error']}")
+
                 order_data = result.get('order', {})
-                logging.info("✅ Kalshi order placed: %s", order_data.get('order_id', 'unknown'))
+                if not order_data:
+                    raise TradeExecutionError(
+                        f"No order data in response. Response: {result}"
+                    )
+
+                order_id = order_data.get('order_id')
+                if not order_id:
+                    raise TradeExecutionError(
+                        f"No order_id in response. Response: {result}"
+                    )
+
+                logging.info("✅ Kalshi order placed: %s", order_id)
                 return {
                     'status': 'success',
                     'exchange': 'kalshi',
-                    'order_id': order_data.get('order_id'),
+                    'order_id': order_id,
                     'market_id': market_id,
                     'side': side,
                     'price': price,
@@ -458,36 +502,66 @@ async def execute_arbitrage_trade(
         return result
 
     # Place actual orders (using IOC for immediate execution)
+    # Use asyncio.gather() to place both orders in parallel
+    # This reduces race condition risk - both orders execute simultaneously
     try:
-        # Place buy order - takes liquidity from orderbook immediately
+        # Prepare buy order coroutine
         if buy_exchange == 'polymarket':
             if not pm_token_id:
                 raise TradeExecutionError("Polymarket token_id required for real trading")
-            buy_order = await place_order_polymarket(
+            buy_order_coro = place_order_polymarket(
                 session, pm_market_id, pm_token_id, 'buy', buy_price, size,
                 wallet, pm_api_key, order_type='IOC'
             )
         else:  # sx
-            buy_order = await place_order_sx(
+            buy_order_coro = place_order_sx(
                 session, sx_market_id, 'buy', buy_price, size,
                 wallet, sx_api_key, order_type='IOC'
             )
 
-        # Place sell order - takes liquidity from orderbook immediately
+        # Prepare sell order coroutine
         if sell_exchange == 'polymarket':
             if not pm_token_id:
                 raise TradeExecutionError("Polymarket token_id required for real trading")
-            sell_order = await place_order_polymarket(
+            sell_order_coro = place_order_polymarket(
                 session, pm_market_id, pm_token_id, 'sell', sell_price, size,
                 wallet, pm_api_key, order_type='IOC'
             )
         else:  # sx
-            sell_order = await place_order_sx(
+            sell_order_coro = place_order_sx(
                 session, sx_market_id, 'sell', sell_price, size,
                 wallet, sx_api_key, order_type='IOC'
             )
 
-        # Update metrics for real trade
+        # Place both orders in parallel to minimize race condition
+        logging.info("Placing buy and sell orders in parallel...")
+        buy_order, sell_order = await asyncio.gather(buy_order_coro, sell_order_coro)
+
+        # Verify both orders were filled before updating PnL
+        buy_status = buy_order.get('response', {}).get('status')
+        sell_status = sell_order.get('response', {}).get('status')
+
+        if buy_status != 'filled':
+            logging.error(
+                "Buy order not filled! Status: %s, Order: %s",
+                buy_status, buy_order.get('order_id')
+            )
+            raise TradeExecutionError(
+                f"Buy order not filled (status: {buy_status}). "
+                "Arbitrage incomplete - may have unhedged position!"
+            )
+
+        if sell_status != 'filled':
+            logging.error(
+                "Sell order not filled! Status: %s, Order: %s",
+                sell_status, sell_order.get('order_id')
+            )
+            raise TradeExecutionError(
+                f"Sell order not filled (status: {sell_status}). "
+                "Arbitrage incomplete - may have unhedged position!"
+            )
+
+        # Both orders filled successfully - update metrics
         g_trades.inc()
         update_pnl(opportunity['expected_pnl'])
 

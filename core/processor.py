@@ -119,7 +119,8 @@ def find_arbitrage_opportunity(
     scenario_1_profit = sx_book['best_bid'] - pm_book['best_ask']
     scenario_2_profit = pm_book['best_bid'] - sx_book['best_ask']
 
-    # Subtract slippage and fees (assume 0.1% fee per side = 0.002 total)
+    # Subtract slippage and fees
+    # Fee: 0.2% total (0.1% per side) = 0.002
     fees = 0.002
     scenario_1_net = scenario_1_profit - max_slip - fees
     scenario_2_net = scenario_2_profit - max_slip - fees
