@@ -17,6 +17,7 @@ import aiohttp
 
 from core.metrics import g_trades, update_pnl
 from core.wallet import Wallet, PolymarketOrderSigner, WalletError
+from core.exchange_balances import get_balance_manager, InsufficientBalanceError
 
 
 class TradeExecutionError(Exception):
@@ -132,6 +133,15 @@ async def place_order_polymarket(
         }
 
     try:
+        # Check if sufficient balance is available
+        balance_manager = get_balance_manager()
+        if not balance_manager.check_balance('polymarket', size):
+            available = balance_manager.get_balance('polymarket')
+            raise InsufficientBalanceError(
+                f"Insufficient balance on Polymarket: "
+                f"required ${size:.2f}, available ${available:.2f}"
+            )
+
         # Validate price range for probability markets
         if not (0 < price <= 1.0):
             raise ValueError(
@@ -302,6 +312,14 @@ async def place_order_sx(
         }
 
     try:
+        # Check if sufficient balance is available
+        balance_manager = get_balance_manager()
+        if not balance_manager.check_balance('sx', size):
+            available = balance_manager.get_balance('sx')
+            raise InsufficientBalanceError(
+                f"Insufficient balance on SX: "
+                f"required ${size:.2f}, available ${available:.2f}"
+            )
         # SX uses smart contract interactions
         # For simplicity, we'll show the structure
         # In production, you'd use web3.py to interact with contracts
@@ -434,6 +452,17 @@ async def place_order_kalshi(
         }
 
     try:
+        # Check if sufficient balance is available (size is number of contracts, not USD)
+        balance_manager = get_balance_manager()
+        # For Kalshi, size is number of contracts, convert to USD estimate
+        # Each contract costs up to $1, so use size as USD amount
+        usd_size = float(size)
+        if not balance_manager.check_balance('kalshi', usd_size):
+            available = balance_manager.get_balance('kalshi')
+            raise InsufficientBalanceError(
+                f"Insufficient balance on Kalshi: "
+                f"required ${usd_size:.2f}, available ${available:.2f}"
+            )
         # Kalshi uses standard REST API with authentication
         # Map order type to Kalshi terminology
         if order_type == 'IOC':
@@ -576,6 +605,25 @@ async def execute_arbitrage_trade(
     # Use asyncio.gather() to place both orders in parallel
     # This reduces race condition risk - both orders execute simultaneously
     try:
+        # Reserve balances before placing orders
+        balance_manager = get_balance_manager()
+
+        # Reserve balance for buy order
+        try:
+            balance_manager.reserve_balance(buy_exchange, size)
+        except InsufficientBalanceError as exc:
+            logging.error("Cannot place buy order: %s", exc)
+            raise TradeExecutionError(str(exc)) from exc
+
+        # Reserve balance for sell order
+        try:
+            balance_manager.reserve_balance(sell_exchange, size)
+        except InsufficientBalanceError as exc:
+            # Release buy balance if sell fails
+            balance_manager.release_balance(buy_exchange, size)
+            logging.error("Cannot place sell order: %s", exc)
+            raise TradeExecutionError(str(exc)) from exc
+
         # Prepare buy order coroutine
         if buy_exchange == 'polymarket':
             if not pm_token_id:
@@ -633,12 +681,22 @@ async def execute_arbitrage_trade(
                     "Unhedged position: %s %s @ %.4f",
                     sell_exchange, sell_order.get('order_id'), sell_price
                 )
+                # Release buy balance, commit sell balance
+                balance_manager.release_balance(buy_exchange, size)
+                balance_manager.commit_order(sell_exchange, size)
             elif sell_failed and not buy_failed:
                 logging.error(
                     "🚨 CRITICAL: Sell failed but buy succeeded! "
                     "Unhedged position: %s %s @ %.4f",
                     buy_exchange, buy_order.get('order_id'), buy_price
                 )
+                # Commit buy balance, release sell balance
+                balance_manager.commit_order(buy_exchange, size)
+                balance_manager.release_balance(sell_exchange, size)
+            else:
+                # Both failed, release both
+                balance_manager.release_balance(buy_exchange, size)
+                balance_manager.release_balance(sell_exchange, size)
 
             raise TradeExecutionError(
                 f"Arbitrage failed - {'; '.join(error_msg)}. "
@@ -654,6 +712,10 @@ async def execute_arbitrage_trade(
             "✅ Both orders placed successfully: buy=%s, sell=%s",
             buy_order.get('order_id'), sell_order.get('order_id')
         )
+
+        # Commit both balances (orders were successful)
+        balance_manager.commit_order(buy_exchange, size)
+        balance_manager.commit_order(sell_exchange, size)
 
         # Both orders filled successfully - update metrics
         g_trades.inc()
@@ -677,4 +739,15 @@ async def execute_arbitrage_trade(
 
     except TradeExecutionError as exc:
         logging.error("Trade execution failed: %s", exc)
+        # Note: balance cleanup is handled above in error handling
+        raise
+    except Exception as exc:
+        # Unexpected error - release all reserved balances
+        logging.error("Unexpected error during trade execution: %s", exc, exc_info=True)
+        try:
+            balance_manager = get_balance_manager()
+            balance_manager.release_balance(buy_exchange, size)
+            balance_manager.release_balance(sell_exchange, size)
+        except Exception as release_exc:
+            logging.error("Failed to release balances: %s", release_exc)
         raise
