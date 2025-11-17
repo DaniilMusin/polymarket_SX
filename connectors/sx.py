@@ -17,11 +17,24 @@ class SxError(Exception):
 @retry()
 async def orderbook_depth(
     session: ClientSession, market_id: str, depth: int = 20
-) -> float:
-    """Return total USDC quantity in top-N bid levels on SX."""
+) -> dict:
+    """
+    Return orderbook with best bid/ask prices and total depth.
+
+    Returns:
+        {
+            'best_bid': float,  # Best bid price
+            'best_ask': float,  # Best ask price
+            'bid_depth': float,  # Total USDC in bids
+            'ask_depth': float,  # Total USDC in asks
+            'total_depth': float,  # bid_depth + ask_depth
+            'bids': list,  # Raw bid data
+            'asks': list,  # Raw ask data
+        }
+    """
     try:
-        # Fix: Add explicit timeout instead of using default
-        timeout = aiohttp.ClientTimeout(total=10.0, connect=5.0)
+        # Use 30 second timeout to handle slow networks and busy exchanges
+        timeout = aiohttp.ClientTimeout(total=30.0, connect=10.0)
         async with session.get(
             f"{API_REST}/orderbook/{market_id}", timeout=timeout
         ) as r:
@@ -37,12 +50,56 @@ async def orderbook_depth(
         raise SxError(f"request failed: {exc}") from exc
 
     try:
-        bids = [float(lvl["quantity"]) for lvl in data["bids"][:depth]]
-        if not bids:
-            logging.warning("SX returned empty bids list")
-            return 0.0
+        # Check required keys exist (bad JSON if missing)
+        if "bids" not in data or "asks" not in data:
+            raise SxError(f"bad response format: missing bids or asks")
+
+        # Safely extract bids and asks with None checks
+        bids_raw = data["bids"]
+        asks_raw = data["asks"]
+
+        # Handle None values
+        if bids_raw is None:
+            bids_raw = []
+        if asks_raw is None:
+            asks_raw = []
+
+        # Limit depth
+        bids_data = bids_raw[:depth] if bids_raw else []
+        asks_data = asks_raw[:depth] if asks_raw else []
+
+        if not bids_data or not asks_data:
+            logging.warning("SX returned empty bids or asks list")
+            return {
+                'best_bid': 0.0,
+                'best_ask': 0.0,
+                'bid_depth': 0.0,
+                'ask_depth': 0.0,
+                'total_depth': 0.0,
+                'bids': [],
+                'asks': [],
+            }
+
+        # Extract prices and quantities
+        bid_quantities = [float(lvl["quantity"]) for lvl in bids_data]
+        ask_quantities = [float(lvl["quantity"]) for lvl in asks_data]
+
+        # Best bid/ask prices
+        best_bid_price = float(bids_data[0]["price"])
+        best_ask_price = float(asks_data[0]["price"])
+
+        bid_depth = sum(bid_quantities)
+        ask_depth = sum(ask_quantities)
+
+        return {
+            'best_bid': best_bid_price,
+            'best_ask': best_ask_price,
+            'bid_depth': bid_depth,
+            'ask_depth': ask_depth,
+            'total_depth': bid_depth + ask_depth,
+            'bids': bids_data,
+            'asks': asks_data,
+        }
     except (KeyError, ValueError, TypeError) as exc:
         logging.error("SX bad response format: %s", exc, exc_info=True)
         raise SxError(f"bad response format: {exc}") from exc
-
-    return sum(bids)

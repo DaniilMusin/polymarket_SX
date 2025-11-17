@@ -9,3 +9,8 @@ mypy>=1.8
 aiohttp>=3.9
 pytest>=7.4
 pytest-asyncio>=0.23
+
+# Crypto and wallet integration
+web3>=6.11.0
+eth-account>=0.10.0
+eth-utils>=2.3.0
