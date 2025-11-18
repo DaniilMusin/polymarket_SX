@@ -27,7 +27,12 @@ async def main() -> None:
 
             try:
                 # Get full orderbooks with prices
+                from core.processor import validate_orderbook
                 pm_book = await polymarket.orderbook_depth(session, pm_market_id)
+                # Validate orderbook format before accessing keys
+                if not validate_orderbook(pm_book):
+                    logging.error("Invalid Polymarket orderbook format")
+                    return
                 logging.info(
                     "Polymarket: bid=%.4f ask=%.4f depth=%.2f",
                     pm_book['best_bid'],
@@ -40,6 +45,10 @@ async def main() -> None:
 
             try:
                 sx_book = await sx.orderbook_depth(session, sx_market_id)
+                # Validate orderbook format before accessing keys
+                if not validate_orderbook(sx_book):
+                    logging.error("Invalid SX orderbook format")
+                    return
                 logging.info(
                     "SX: bid=%.4f ask=%.4f depth=%.2f",
                     sx_book['best_bid'],

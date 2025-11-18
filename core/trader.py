@@ -12,6 +12,7 @@ import time
 import random
 import asyncio
 from typing import Optional, Dict
+from decimal import Decimal
 from aiohttp import ClientSession
 import aiohttp
 
@@ -163,18 +164,20 @@ async def place_order_polymarket(
         # Calculate maker and taker amounts
         # For BUY order: maker provides USDC, taker provides tokens
         # For SELL order: maker provides tokens, taker provides USDC
+        # Use Decimal for precise division to avoid floating-point precision loss
         if side.lower() == 'buy':
             maker_amount = size_wei  # USDC
-            taker_amount = int(size_wei / price)  # Tokens (safe: price > 0 validated above)
+            taker_amount = int(Decimal(str(size_wei)) / Decimal(str(price)))  # Tokens (safe: price > 0 validated above)
             order_side = 0  # BUY
         else:
-            maker_amount = int(size_wei / price)  # Tokens (safe: price > 0 validated above)
+            maker_amount = int(Decimal(str(size_wei)) / Decimal(str(price)))  # Tokens (safe: price > 0 validated above)
             taker_amount = size_wei  # USDC
             order_side = 1  # SELL
 
         # Get current nonce with random component to prevent collisions
-        # If two orders are created within 1ms, the random component ensures uniqueness
-        nonce = int(time.time() * 1000) + random.randint(0, 1000000)
+        # Use microseconds (1e-6) instead of milliseconds (1e-3) for better collision resistance
+        # Large random component (0-10M) ensures uniqueness even in high-frequency scenarios
+        nonce = int(time.time() * 1000000) + random.randint(0, 10000000)
 
         # Set expiration based on order type
         if order_type == 'IOC':

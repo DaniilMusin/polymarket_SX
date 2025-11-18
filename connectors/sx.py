@@ -6,8 +6,9 @@ from aiohttp.client_exceptions import ClientError
 from typing import Any
 
 from utils.retry import retry
+from config import SX_API_URL, API_TIMEOUT_TOTAL, API_TIMEOUT_CONNECT
 
-API_REST = "https://api.sx.bet"
+API_REST = SX_API_URL
 
 
 class SxError(Exception):
@@ -33,15 +34,19 @@ async def orderbook_depth(
         }
     """
     try:
-        # Use 30 second timeout to handle slow networks and busy exchanges
-        timeout = aiohttp.ClientTimeout(total=30.0, connect=10.0)
+        # Use configurable timeout to handle slow networks and busy exchanges
+        timeout = aiohttp.ClientTimeout(total=API_TIMEOUT_TOTAL, connect=API_TIMEOUT_CONNECT)
         async with session.get(
             f"{API_REST}/orderbook/{market_id}", timeout=timeout
         ) as r:
             if r.status != 200:
                 logging.error("SX API returned status %s", r.status)
                 raise SxError(f"status {r.status}")
-            data: Any = await r.json()
+            try:
+                data: Any = await r.json()
+            except aiohttp.ContentTypeError as exc:
+                logging.error("SX API returned invalid JSON: %s", exc, exc_info=True)
+                raise SxError(f"invalid response format (not JSON): {exc}") from exc
     except asyncio.TimeoutError as exc:
         logging.error("SX request timed out: %s", exc, exc_info=True)
         raise SxError(f"request timeout: {exc}") from exc

@@ -79,8 +79,14 @@ async def run_arbitrage_cycle(
         pm_depth = await polymarket.orderbook_depth(session, pm_market)
         sx_depth = await sx.orderbook_depth(session, sx_market)
 
-        # Обрабатываем данные
-        await process_depth(pm_depth, sx_depth)
+        # Ищем арбитражную возможность (используем новую функцию вместо устаревшей process_depth)
+        from core.processor import find_arbitrage_opportunity
+        opportunity = find_arbitrage_opportunity(pm_depth, sx_depth)
+
+        if opportunity:
+            logging.info("🎯 Найдена арбитражная возможность: прибыль %.2f bps", opportunity.get('profit_bps', 0))
+        else:
+            logging.info("ℹ️  Арбитражные возможности не найдены")
 
         logging.info("✅ Цикл арбитража завершен успешно")
 

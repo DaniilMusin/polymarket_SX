@@ -1,6 +1,7 @@
 import logging
 import os
 import asyncio
+from typing import Optional
 from telegram import Bot
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
@@ -21,7 +22,7 @@ class TelegramHandler(logging.Handler):
     def __init__(self, level: int = logging.ERROR) -> None:
         super().__init__(level)
         # Only create bot if both token and valid chat ID are available
-        self.bot: Bot | None = None
+        self.bot: Optional[Bot] = None
         if TOKEN and CHAT:
             try:
                 self.bot = Bot(TOKEN)

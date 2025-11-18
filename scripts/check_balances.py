@@ -52,7 +52,9 @@ async def check_polygon_balance(wallet: Wallet):
             }, "latest"]
         }
 
-        async with aiohttp.ClientSession() as session:
+        # Add timeout to prevent hanging on network issues
+        timeout = aiohttp.ClientTimeout(total=10.0)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.post(rpc_url, json=payload) as resp:
                 if resp.status == 200:
                     result = await resp.json()
