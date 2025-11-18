@@ -247,21 +247,30 @@ class PolymarketOrderSigner:
         import random
 
         # Generate salt with random component to prevent collisions
-        # If two orders are created within 1ms, the random component ensures uniqueness
-        salt = int(time.time() * 1000) + random.randint(0, 1000000)
+        # Use microseconds (1e-6) instead of milliseconds (1e-3) for better collision resistance
+        # Large random component (0-10M) ensures uniqueness even in high-frequency scenarios
+        salt = int(time.time() * 1000000) + random.randint(0, 10000000)
 
         # Safely convert tokenId with validation
         try:
             if isinstance(token_id, str):
-                # Try to parse as hex string
-                token_id_int = int(token_id, 16)
+                # Strip any 0x prefix and validate hex format
+                token_id_clean = token_id.lower()
+                if token_id_clean.startswith('0x'):
+                    token_id_clean = token_id_clean[2:]
+                # Validate hex string format
+                if not all(c in '0123456789abcdef' for c in token_id_clean):
+                    raise ValueError(f"Invalid hex string format")
+                token_id_int = int(token_id_clean, 16)
             else:
                 token_id_int = int(token_id)
 
-            # Validate token_id is non-negative
+            # Validate token_id is in valid uint256 range (0 to 2^256 - 1)
             if token_id_int < 0:
                 raise ValueError(f"tokenId must be non-negative, got: {token_id_int}")
-        except ValueError as exc:
+            if token_id_int >= (1 << 256):  # 2^256
+                raise ValueError(f"tokenId exceeds uint256 maximum, got: {token_id_int}")
+        except (ValueError, TypeError) as exc:
             raise WalletError(f"Invalid tokenId '{token_id}': {exc}") from exc
 
         order_message = {

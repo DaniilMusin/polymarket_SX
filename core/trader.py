@@ -12,9 +12,11 @@ import time
 import random
 import asyncio
 from typing import Optional, Dict
+from decimal import Decimal
 from aiohttp import ClientSession
 import aiohttp
 
+from config import API_TIMEOUT_TOTAL, API_TIMEOUT_CONNECT
 from core.metrics import g_trades, update_pnl
 from core.wallet import Wallet, PolymarketOrderSigner, WalletError
 from core.exchange_balances import get_balance_manager, InsufficientBalanceError
@@ -24,24 +26,28 @@ class TradeExecutionError(Exception):
     """Raised when trade execution fails."""
 
 
-def check_ioc_order_filled(response: Dict, exchange: str, order_type: str = 'IOC') -> bool:
+def check_ioc_order_filled(
+    response: Dict, exchange: str, order_type: str = 'IOC',
+    expected_size: Optional[float] = None
+) -> bool:
     """
     Check if IOC order was successfully filled.
 
     For IOC (Immediate Or Cancel) orders, we need to verify the order was actually filled,
     not just accepted by the API. IOC orders can return 200 OK but be CANCELLED due to
-    insufficient liquidity.
+    insufficient liquidity, or only PARTIALLY filled.
 
     Args:
         response: API response dictionary
         exchange: Exchange name ('polymarket', 'sx', 'kalshi')
         order_type: Order type ('IOC' or 'LIMIT')
+        expected_size: Expected order size (optional, for partial fill detection)
 
     Returns:
-        True if filled or if order_type is not IOC
+        True if fully filled or if order_type is not IOC
 
     Raises:
-        TradeExecutionError: If IOC order was not filled
+        TradeExecutionError: If IOC order was not filled or partially filled
     """
     # Only check for IOC orders
     if order_type != 'IOC':
@@ -49,26 +55,30 @@ def check_ioc_order_filled(response: Dict, exchange: str, order_type: str = 'IOC
 
     # Extract status field based on exchange
     status = None
+    filled_amount = None
+
     if exchange == 'polymarket':
         # Polymarket: 'status' field with values: LIVE, MATCHED, FILLED, CANCELLED
         status = response.get('status')
+        # Try to get filled amount if available
+        filled_amount = response.get('size_matched') or response.get('filled_amount')
     elif exchange == 'sx':
         # SX: 'state' field with values: PENDING, FILLED, CANCELLED, EXPIRED
         status = response.get('state')
+        filled_amount = response.get('filled_size') or response.get('filled_amount')
     elif exchange == 'kalshi':
         # Kalshi: order.status with values: resting, filled, cancelled
         order_data = response.get('order', {})
         status = order_data.get('status')
+        filled_amount = order_data.get('filled_count') or order_data.get('filled_amount')
 
-    # If no status field found, log warning but assume success
-    # (API structure might be different than expected)
+    # If no status field found, FAIL SAFE - raise error instead of assuming success
     if not status:
-        logging.warning(
-            "%s: No status field in response for IOC order. "
-            "Cannot verify if order was filled. Response keys: %s",
-            exchange, list(response.keys())
+        raise TradeExecutionError(
+            f"{exchange}: No status field in IOC order response! "
+            f"Cannot verify if order was filled. Response keys: {list(response.keys())}. "
+            f"This is a critical error - refusing to proceed to prevent unhedged position."
         )
-        return True
 
     # For IOC: only FILLED/MATCHED statuses are acceptable
     filled_statuses = ['FILLED', 'filled', 'MATCHED', 'matched']
@@ -79,7 +89,24 @@ def check_ioc_order_filled(response: Dict, exchange: str, order_type: str = 'IOC
             f"This would create an unhedged position."
         )
 
-    logging.info("%s: IOC order confirmed filled (status: %s)", exchange, status)
+    # Check for partial fills if we have both filled_amount and expected_size
+    if filled_amount is not None and expected_size is not None:
+        filled_float = float(filled_amount)
+        # Allow 1% tolerance for rounding errors
+        tolerance = expected_size * 0.01
+        if filled_float < (expected_size - tolerance):
+            raise TradeExecutionError(
+                f"{exchange} IOC order partially filled! "
+                f"Expected: {expected_size}, Filled: {filled_float}. "
+                f"Partial fills create unhedged positions in arbitrage."
+            )
+        logging.info(
+            "%s: IOC order fully filled (status: %s, filled: %.4f/%.4f)",
+            exchange, status, filled_float, expected_size
+        )
+    else:
+        logging.info("%s: IOC order confirmed filled (status: %s)", exchange, status)
+
     return True
 
 
@@ -163,18 +190,20 @@ async def place_order_polymarket(
         # Calculate maker and taker amounts
         # For BUY order: maker provides USDC, taker provides tokens
         # For SELL order: maker provides tokens, taker provides USDC
+        # Use Decimal for precise division to avoid floating-point precision loss
         if side.lower() == 'buy':
             maker_amount = size_wei  # USDC
-            taker_amount = int(size_wei / price)  # Tokens (safe: price > 0 validated above)
+            taker_amount = int(Decimal(str(size_wei)) / Decimal(str(price)))  # Tokens (safe: price > 0 validated above)
             order_side = 0  # BUY
         else:
-            maker_amount = int(size_wei / price)  # Tokens (safe: price > 0 validated above)
+            maker_amount = int(Decimal(str(size_wei)) / Decimal(str(price)))  # Tokens (safe: price > 0 validated above)
             taker_amount = size_wei  # USDC
             order_side = 1  # SELL
 
         # Get current nonce with random component to prevent collisions
-        # If two orders are created within 1ms, the random component ensures uniqueness
-        nonce = int(time.time() * 1000) + random.randint(0, 1000000)
+        # Use microseconds (1e-6) instead of milliseconds (1e-3) for better collision resistance
+        # Large random component (0-10M) ensures uniqueness even in high-frequency scenarios
+        nonce = int(time.time() * 1000000) + random.randint(0, 10000000)
 
         # Set expiration based on order type
         if order_type == 'IOC':
@@ -222,8 +251,8 @@ async def place_order_polymarket(
         if api_key:
             headers['Authorization'] = f'Bearer {api_key}'
 
-        # Use 30 second timeout to handle slow networks and busy exchanges
-        timeout = aiohttp.ClientTimeout(total=30.0)
+        # Use configurable timeout to handle slow networks and busy exchanges
+        timeout = aiohttp.ClientTimeout(total=API_TIMEOUT_TOTAL, connect=API_TIMEOUT_CONNECT)
         async with session.post(
             clob_url, json=order_payload, headers=headers, timeout=timeout
         ) as resp:
@@ -243,7 +272,8 @@ async def place_order_polymarket(
                 logging.info("✅ Polymarket order placed: %s", order_id)
 
                 # Check if IOC order was actually filled (not just accepted)
-                check_ioc_order_filled(result, 'polymarket', order_type)
+                # Pass size to check for partial fills
+                check_ioc_order_filled(result, 'polymarket', order_type, expected_size=size)
 
                 return {
                     'status': 'success',
@@ -367,8 +397,8 @@ async def place_order_sx(
         if api_key:
             headers['X-API-Key'] = api_key
 
-        # Use 30 second timeout to handle slow networks and busy exchanges
-        timeout = aiohttp.ClientTimeout(total=30.0)
+        # Use configurable timeout to handle slow networks and busy exchanges
+        timeout = aiohttp.ClientTimeout(total=API_TIMEOUT_TOTAL, connect=API_TIMEOUT_CONNECT)
         async with session.post(
             sx_url, json=order_payload, headers=headers, timeout=timeout
         ) as resp:
@@ -388,7 +418,8 @@ async def place_order_sx(
                 logging.info("✅ SX order placed: %s", order_id)
 
                 # Check if IOC order was actually filled (not just accepted)
-                check_ioc_order_filled(result, 'sx', order_type)
+                # Pass size to check for partial fills
+                check_ioc_order_filled(result, 'sx', order_type, expected_size=size)
 
                 return {
                     'status': 'success',
@@ -498,8 +529,8 @@ async def place_order_kalshi(
             'Authorization': f'Bearer {api_key}',
         }
 
-        # Use 30 second timeout to handle slow networks and busy exchanges
-        timeout = aiohttp.ClientTimeout(total=30.0)
+        # Use configurable timeout to handle slow networks and busy exchanges
+        timeout = aiohttp.ClientTimeout(total=API_TIMEOUT_TOTAL, connect=API_TIMEOUT_CONNECT)
         async with session.post(
             kalshi_url, json=order_payload, headers=headers, timeout=timeout
         ) as resp:
@@ -525,7 +556,8 @@ async def place_order_kalshi(
                 logging.info("✅ Kalshi order placed: %s", order_id)
 
                 # Check if IOC order was actually filled (not just accepted)
-                check_ioc_order_filled(result, 'kalshi', order_type)
+                # Pass size to check for partial fills
+                check_ioc_order_filled(result, 'kalshi', order_type, expected_size=size)
 
                 return {
                     'status': 'success',
@@ -815,10 +847,10 @@ async def execute_arbitrage_trade(
             )
 
         # Both orders succeeded
-        # For IOC orders: successful response means order was either:
-        # - Fully filled (good!)
-        # - Cancelled due to insufficient liquidity (also acceptable for IOC)
-        # We trust that place_order_* already validated the response (200/201, orderID exists)
+        # For IOC orders: if we reached here, check_ioc_order_filled() has confirmed
+        # that BOTH orders were FULLY FILLED (not cancelled or partially filled).
+        # This is CRITICAL for arbitrage - any partial fill or cancellation would
+        # create an unhedged position and potential loss.
         logging.info(
             "✅ Both orders placed successfully: buy=%s, sell=%s",
             buy_order.get('order_id'), sell_order.get('order_id')

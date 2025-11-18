@@ -1,8 +1,9 @@
 import logging
 from typing import Dict, List, Optional
 
-from config import SLIP_BY_DEPTH
+from config import SLIP_BY_DEPTH, EXCHANGE_FEES, DEFAULT_FEE, MAX_POSITION_SIZE, MAX_POSITION_PERCENT, MIN_PROFIT_BPS
 from core.metrics import g_edge, g_trades
+from core.exchange_balances import get_balance_manager, InsufficientBalanceError
 
 
 def calculate_total_depth(orderbook: Dict[str, List[Dict]]) -> float:
@@ -110,7 +111,7 @@ def calculate_spread_percent(orderbook: dict) -> float:
 def find_arbitrage_opportunity(
     pm_book: dict,
     sx_book: dict,
-    min_profit_bps: float = 10.0  # Minimum 0.1% profit (10 basis points)
+    min_profit_bps: float = None  # Minimum profit in basis points (from config if None)
 ) -> Optional[Dict]:
     """
     Find arbitrage opportunity between two orderbooks.
@@ -128,7 +129,11 @@ def find_arbitrage_opportunity(
     Returns:
         Dictionary with arbitrage details or None if no opportunity
     """
-    logging.debug("Finding arbitrage opportunity between PM and SX")
+    # Use config default if not specified
+    if min_profit_bps is None:
+        min_profit_bps = MIN_PROFIT_BPS
+
+    logging.debug("Finding arbitrage opportunity between PM and SX (min profit: %.2f bps)", min_profit_bps)
 
     # Validate orderbooks
     if not validate_orderbook(pm_book):
@@ -150,8 +155,12 @@ def find_arbitrage_opportunity(
     scenario_2_profit = pm_book['best_bid'] - sx_book['best_ask']
 
     # Subtract slippage and fees
-    # Fee: 0.2% total (0.1% per side) = 0.002
-    fees = 0.002
+    # Fee is 0.1% per side, 0.2% total for round-trip (buy + sell)
+    # Use configured fees per exchange, or default if not found
+    fees = max(
+        EXCHANGE_FEES.get('polymarket', DEFAULT_FEE),
+        EXCHANGE_FEES.get('sx', DEFAULT_FEE)
+    )
     scenario_1_net = scenario_1_profit - max_slip - fees
     scenario_2_net = scenario_2_profit - max_slip - fees
 
@@ -189,7 +198,6 @@ def find_arbitrage_opportunity(
 
     # Limit position size to avoid excessive slippage
     # CRITICAL: Also limit by available balance on BOTH exchanges!
-    from core.exchange_balances import get_balance_manager
     try:
         balance_manager = get_balance_manager()
         max_buy_balance = balance_manager.get_balance(buy_exchange)
@@ -197,13 +205,18 @@ def find_arbitrage_opportunity(
         max_balance = min(max_buy_balance, max_sell_balance)
 
         # Position size is limited by:
-        # 1. Market depth (10% to avoid slippage)
-        # 2. Hard cap of $1000
+        # 1. Market depth (configurable % to avoid slippage)
+        # 2. Hard cap from config (default $1000)
         # 3. Available balance on BOTH exchanges (CRITICAL!)
-        position_size = min(max_size * 0.1, 1000.0, max_balance)
-    except Exception:
-        # If balance manager not available, use old logic
-        position_size = min(max_size * 0.1, 1000.0)  # Max 10% of depth or $1000
+        position_size = min(max_size * MAX_POSITION_PERCENT, MAX_POSITION_SIZE, max_balance)
+    except InsufficientBalanceError as exc:
+        # If balance manager not available or has insufficient balance, use fallback logic
+        logging.warning("Balance manager unavailable or insufficient balance: %s, using default limit", exc)
+        position_size = min(max_size * MAX_POSITION_PERCENT, MAX_POSITION_SIZE)
+    except Exception as exc:
+        # Catch any other unexpected errors
+        logging.warning("Unexpected error getting balance: %s, using default limit", exc, exc_info=True)
+        position_size = min(max_size * MAX_POSITION_PERCENT, MAX_POSITION_SIZE)
 
     # Check minimum position size (avoid zero or very small positions)
     min_position_size = 0.01  # Minimum $0.01

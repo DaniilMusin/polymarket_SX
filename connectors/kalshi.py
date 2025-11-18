@@ -6,8 +6,9 @@ from aiohttp.client_exceptions import ClientError
 from typing import Any
 
 from utils.retry import retry
+from config import KALSHI_API_URL, API_TIMEOUT_TOTAL, API_TIMEOUT_CONNECT
 
-API_BASE = "https://api.elections.kalshi.com/trade-api/v2"
+API_BASE = KALSHI_API_URL
 
 
 class KalshiError(Exception):
@@ -33,8 +34,8 @@ async def orderbook_depth(
         }
     """
     try:
-        # Use 30 second timeout to handle slow networks and busy exchanges
-        timeout = aiohttp.ClientTimeout(total=30.0, connect=10.0)
+        # Use configurable timeout to handle slow networks and busy exchanges
+        timeout = aiohttp.ClientTimeout(total=API_TIMEOUT_TOTAL, connect=API_TIMEOUT_CONNECT)
         params = {"depth": depth} if depth > 0 else {}
         async with session.get(
             f"{API_BASE}/markets/{market_id}/orderbook",
@@ -44,7 +45,11 @@ async def orderbook_depth(
             if r.status != 200:
                 logging.error("Kalshi API returned status %s", r.status)
                 raise KalshiError(f"status {r.status}")
-            data: Any = await r.json()
+            try:
+                data: Any = await r.json()
+            except aiohttp.ContentTypeError as exc:
+                logging.error("Kalshi API returned invalid JSON: %s", exc, exc_info=True)
+                raise KalshiError(f"invalid response format (not JSON): {exc}") from exc
     except asyncio.TimeoutError as exc:
         logging.error("Kalshi request timed out: %s", exc, exc_info=True)
         raise KalshiError(f"request timeout: {exc}") from exc

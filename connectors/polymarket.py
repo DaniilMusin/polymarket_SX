@@ -6,8 +6,9 @@ from aiohttp.client_exceptions import ClientError
 from typing import Any
 
 from utils.retry import retry
+from config import POLYMARKET_API_URL, API_TIMEOUT_TOTAL, API_TIMEOUT_CONNECT
 
-API_CLOB = "https://polymarket.com/api"
+API_CLOB = POLYMARKET_API_URL
 
 
 class OrderbookError(Exception):
@@ -33,15 +34,19 @@ async def orderbook_depth(
         }
     """
     try:
-        # Use 30 second timeout to handle slow networks and busy exchanges
-        timeout = aiohttp.ClientTimeout(total=30.0, connect=10.0)
+        # Use configurable timeout to handle slow networks and busy exchanges
+        timeout = aiohttp.ClientTimeout(total=API_TIMEOUT_TOTAL, connect=API_TIMEOUT_CONNECT)
         async with session.get(
             f"{API_CLOB}/orderbook/{market_id}", timeout=timeout
         ) as r:
             if r.status != 200:
                 logging.error("Polymarket API returned status %s", r.status)
                 raise OrderbookError(f"status {r.status}")
-            data: Any = await r.json()
+            try:
+                data: Any = await r.json()
+            except aiohttp.ContentTypeError as exc:
+                logging.error("Polymarket API returned invalid JSON: %s", exc, exc_info=True)
+                raise OrderbookError(f"invalid response format (not JSON): {exc}") from exc
     except asyncio.TimeoutError as exc:
         logging.error("Polymarket request timed out: %s", exc, exc_info=True)
         raise OrderbookError(f"request timeout: {exc}") from exc

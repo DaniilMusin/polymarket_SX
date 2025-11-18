@@ -1,0 +1,596 @@
+diff --git a/.env.example b/.env.example
+index 96ff9d2..9673fae 100644
+--- a/.env.example
++++ b/.env.example
+@@ -1,55 +1,70 @@
+ # Copy this file to .env and replace placeholders with your secrets
+ # CRITICAL: Never commit the actual .env file with real keys!
+ 
+-# ===== ALERTS (HIGHLY RECOMMENDED FOR PRODUCTION) =====
+-# Telegram Bot (get token from @BotFather, chat_id from @userinfobot)
+-TELEGRAM_BOT_TOKEN=<YOUR-TELEGRAM-BOT-TOKEN>
+-TELEGRAM_CHAT_ID=<YOUR-TELEGRAM-CHAT-ID>
+-
+-# Alternative: Telegram (legacy variable names, still supported)
+-TELEGRAM_TOKEN=<YOUR-TELEGRAM-TOKEN>
+-
+-# Discord Webhook (get from Discord channel settings -> Integrations)
+-DISCORD_WEBHOOK_URL=<YOUR-DISCORD-WEBHOOK-URL>
+-
+ # ===== ETHEREUM WALLET =====
+ # Your Ethereum private key (with or without 0x prefix)
+ # This is used for signing orders on Polymarket (Polygon network)
+ PRIVATE_KEY=<YOUR-PRIVATE-KEY-HERE>
+ 
+ # ===== EXCHANGE API KEYS =====
+-# Polymarket CLOB API (optional for read-only operations)
++# Optional - Some exchanges work with wallet signing only
+ POLYMARKET_API_KEY=<YOUR-POLYMARKET-API-KEY>
+-
+-# SX Network API (optional, wallet signing is primary method)
+ SX_API_KEY=<YOUR-SX-API-KEY>
+-
+-# Kalshi API
+ KALSHI_API_KEY=<YOUR-KALSHI-API-KEY>
+ 
++# ===== ALERT SYSTEM =====
++# File-based logging for critical alerts
++ALERT_LOG_PATH=logs/alerts.log
++ALERT_LOG_MAX_BYTES=10485760  # 10MB
++ALERT_LOG_BACKUP_COUNT=5
++
++# ===== API CONFIGURATION =====
++# Timeout settings (seconds)
++API_TIMEOUT_TOTAL=30.0
++API_TIMEOUT_CONNECT=10.0
++
++# API Endpoints (optional - defaults are usually fine)
++# POLYMARKET_API_URL=https://polymarket.com/api
++# SX_API_URL=https://api.sx.bet
++# KALSHI_API_URL=https://api.elections.kalshi.com/trade-api/v2
++
+ # ===== TRADING PARAMETERS =====
+ # Minimum profit threshold in basis points (1 bps = 0.01%)
+-# Recommended: 50-100 for production (0.5-1%)
+-MIN_PROFIT_BPS=10
++# Recommended: 20-50 for production (0.2-0.5%)
++MIN_PROFIT_BPS=10.0
+ 
+ # Maximum position size in USD per trade
+-# Recommended: Start with $10-100 for testing
+-MAX_POSITION_SIZE=1000
++# Recommended: Start with $10-50 for testing
++MAX_POSITION_SIZE=1000.0
+ 
+-# Enable real trading (set to 'true' to enable, anything else = simulation)
+-# IMPORTANT: Set to 'false' for testing first!
+-ENABLE_REAL_TRADING=false
++# Maximum % of market depth to use (0.1 = 10%)
++MAX_POSITION_PERCENT=0.1
++
++# ===== EXCHANGE FEES =====
++# Total round-trip fees (buy + sell)
++POLYMARKET_FEE=0.002  # 0.2% total (0.1% per side)
++SX_FEE=0.002          # 0.2% total
++KALSHI_FEE=0.003      # 0.3% total
++DEFAULT_FEE=0.002
+ 
+ # ===== EXCHANGE BALANCE LIMITS =====
+ # Virtual balance limits for each exchange (in USD)
+-# The bot will only use up to this amount, even if real balance is higher
+-# This provides an additional safety layer to control risk
+-# Recommended: Start with $10 per exchange for testing
++# The bot will only use up to this amount for safety
++# Recommended: Start with $10-20 per exchange for testing
+ 
+ # Default balance for all exchanges (if individual balances not set)
+ EXCHANGE_INITIAL_BALANCE=10.0
+ 
+ # Individual exchange balances (optional, overrides EXCHANGE_INITIAL_BALANCE)
+-POLYMARKET_BALANCE=10.0
+-SX_BALANCE=10.0
+-KALSHI_BALANCE=10.0
++# POLYMARKET_BALANCE=10.0
++# SX_BALANCE=10.0
++# KALSHI_BALANCE=10.0
++
++# ===== RETRY CONFIGURATION =====
++RETRY_ATTEMPTS=3
++RETRY_DELAY=1.0
++
++# ===== PRODUCTION SETTINGS =====
++# Enable real trading (set to 'true' to enable)
++# IMPORTANT: Set to 'false' for testing first!
++ENABLE_REAL_TRADING=false
+diff --git a/.gitignore b/.gitignore
+index 2077954..f7c7ad7 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -7,3 +7,4 @@ __pycache__/
+ # ignore patch files
+ patch.diff
+ patchdiff
++logs/
+diff --git a/TELEGRAM_TO_LOGGING_MIGRATION.md b/TELEGRAM_TO_LOGGING_MIGRATION.md
+new file mode 100644
+index 0000000..e83a391
+--- /dev/null
++++ b/TELEGRAM_TO_LOGGING_MIGRATION.md
+@@ -0,0 +1,204 @@
++# Миграция с Telegram на File-Based Logging
++
++## Что изменилось
++
++### ❌ УДАЛЕНО
++- Telegram bot интеграция
++- Зависимость `python-telegram-bot` (вызывала проблемы совместимости)
++- Переменные окружения: `TELEGRAM_TOKEN`, `TELEGRAM_CHAT_ID`
++- Класс `TelegramHandler`
++
++### ✅ ДОБАВЛЕНО
++- `CriticalAlertHandler` - файловое логирование с ротацией
++- Логирование всех критических ошибок в `logs/alerts.log`
++- Автоматическая ротация файлов (10MB max, 5 бэкапов)
++- Новая функция `setup_alert_logging()` для простой настройки
++
++## Преимущества нового подхода
++
++| Telegram Bot | File-Based Logging |
++|--------------|-------------------|
++| ❌ Зависимость от внешнего API | ✅ Локальное, надёжное |
++| ❌ Нужен токен и chat_id | ✅ Работает из коробки |
++| ❌ Проблемы совместимости | ✅ Стандартная библиотека Python |
++| ❌ Может не доставить сообщения | ✅ Всегда записывает |
++| ❌ Сложнее мониторить | ✅ Просто: `tail -f logs/alerts.log` |
++
++## Как использовать
++
++### Базовое использование (автоматически)
++Все ошибки уровня ERROR и выше автоматически пишутся в `logs/alerts.log`:
++
++```python
++import logging
++
++# Это автоматически попадёт в alerts.log
++logging.error("Critical issue: %s", error_message)
++logging.critical("System failure!")
++```
++
++### Настройка в своём коде
++```python
++from core.alerts import setup_alert_logging
++
++# Настроить alert logging для вашего logger
++logger = logging.getLogger('my_app')
++setup_alert_logging(logger)
++```
++
++### Мониторинг алертов в реальном времени
++```bash
++# Смотреть алерты в реальном времени
++tail -f logs/alerts.log
++
++# Поиск конкретных ошибок
++grep "CRITICAL" logs/alerts.log
++
++# Последние 50 алертов
++tail -50 logs/alerts.log
++```
++
++## Конфигурация
++
++### Переменные окружения
++
++```bash
++# Путь к файлу логов (default: logs/alerts.log)
++ALERT_LOG_PATH=logs/alerts.log
++
++# Максимальный размер файла в байтах (default: 10MB)
++ALERT_LOG_MAX_BYTES=10485760
++
++# Количество бэкап файлов (default: 5)
++ALERT_LOG_BACKUP_COUNT=5
++```
++
++### Ротация файлов
++
++При достижении `ALERT_LOG_MAX_BYTES`:
++- `alerts.log` → `alerts.log.1`
++- `alerts.log.1` → `alerts.log.2`
++- и т.д. до `ALERT_LOG_BACKUP_COUNT`
++
++Старые файлы автоматически удаляются.
++
++## Формат логов
++
++```
++2025-11-18 15:30:45 | ERROR    | Trade execution failed: insufficient balance
++2025-11-18 15:31:12 | CRITICAL | System shutdown: unhandled exception
++```
++
++Формат: `timestamp | level | message`
++
++## Миграция с Telegram
++
++### Шаг 1: Удалите старые переменные
++```bash
++# Из .env удалите:
++# TELEGRAM_TOKEN=...
++# TELEGRAM_CHAT_ID=...
++```
++
++### Шаг 2: (Опционально) Настройте путь к логам
++```bash
++# В .env добавьте (если хотите изменить default):
++ALERT_LOG_PATH=/custom/path/alerts.log
++ALERT_LOG_MAX_BYTES=20971520  # 20MB
++ALERT_LOG_BACKUP_COUNT=10
++```
++
++### Шаг 3: Начните использовать
++Всё! Больше ничего не нужно. Алерты автоматически пишутся в файл.
++
++## Интеграция с другими системами
++
++### Отправка алертов в Slack/Discord/Email
++
++Можно легко добавить дополнительные handler'ы:
++
++```python
++from core.alerts import CriticalAlertHandler
++import logging
++
++# Ваш custom handler для Slack
++class SlackHandler(logging.Handler):
++    def emit(self, record):
++        # Отправить в Slack webhook
++        pass
++
++# Добавить к root logger
++logger = logging.getLogger()
++logger.addHandler(SlackHandler())
++```
++
++### Мониторинг с помощью systemd/journald
++
++```bash
++# Если запускаете через systemd, логи попадут в journal
++journalctl -u your-bot-service -f | grep ERROR
++```
++
++### Централизованное логирование (ELK, Splunk)
++
++Просто направьте `logs/alerts.log` в ваш log aggregator:
++
++```bash
++# Filebeat, Fluentd, или любой другой shipper
++filebeat -e -c filebeat.yml
++```
++
++## Устранение проблем
++
++### Логи не создаются
++
++Проверьте права доступа:
++```bash
++mkdir -p logs
++chmod 755 logs
++```
++
++### Файл не ротируется
++
++Проверьте конфигурацию:
++```python
++import os
++print(os.getenv('ALERT_LOG_MAX_BYTES', '10485760'))
++```
++
++### Нужен старый Telegram функционал
++
++Можно добавить отдельный handler параллельно:
++```python
++# Установите python-telegram-bot отдельно
++# pip install python-telegram-bot
++
++# Создайте свой TelegramHandler
++# (код из старой версии core/alerts.py)
++```
++
++## Тестирование
++
++Запустите тесты:
++```bash
++pytest tests/test_alerts.py -v
++```
++
++Должно пройти 4/4 теста:
++- ✅ test_alert_handler_creation
++- ✅ test_alert_handler_emit
++- ✅ test_setup_alert_logging
++- ✅ test_alert_handler_handles_errors
++
++## Вопросы и поддержка
++
++Если у вас возникли проблемы:
++1. Проверьте, что директория `logs/` существует
++2. Проверьте права доступа
++3. Посмотрите в основные логи приложения
++4. Создайте issue в репозитории
++
++---
++
++**Дата миграции:** 2025-11-18
++**Версия:** После коммита "Remove Telegram dependency"
+diff --git a/core/alerts.py b/core/alerts.py
+index 9f63fe5..c458d31 100644
+--- a/core/alerts.py
++++ b/core/alerts.py
+@@ -1,53 +1,92 @@
++"""
++Alert system using standard Python logging.
++
++This module provides enhanced logging capabilities for critical events,
++errors, and important trading activities.
++"""
++
+ import logging
+ import os
+-import asyncio
+ from typing import Optional
+-from telegram import Bot
++from logging.handlers import RotatingFileHandler
++
++
++# Configure alert log file path
++ALERT_LOG_PATH = os.getenv("ALERT_LOG_PATH", "logs/alerts.log")
++ALERT_LOG_MAX_BYTES = int(os.getenv("ALERT_LOG_MAX_BYTES", str(10 * 1024 * 1024)))  # 10MB
++ALERT_LOG_BACKUP_COUNT = int(os.getenv("ALERT_LOG_BACKUP_COUNT", "5"))
+ 
+-TOKEN = os.getenv("TELEGRAM_TOKEN")
+-CHAT_ID_STR = os.getenv("TELEGRAM_CHAT_ID")
+ 
+-# Validate chat ID properly
+-CHAT = None
+-if CHAT_ID_STR:
+-    try:
+-        chat_id = int(CHAT_ID_STR)
+-        if chat_id != 0:  # 0 is not a valid Telegram chat ID
+-            CHAT = chat_id
+-    except ValueError:
+-        logging.warning("Invalid TELEGRAM_CHAT_ID: %s", CHAT_ID_STR)
++class CriticalAlertHandler(logging.Handler):
++    """
++    Custom logging handler for critical alerts.
+ 
++    This handler:
++    - Logs critical errors to a separate alerts.log file
++    - Uses rotating file handler to prevent disk space issues
++    - Formats messages with clear severity indicators
++    - Can be extended to send emails, Slack messages, etc.
++    """
+ 
+-class TelegramHandler(logging.Handler):
+     def __init__(self, level: int = logging.ERROR) -> None:
+         super().__init__(level)
+-        # Only create bot if both token and valid chat ID are available
+-        self.bot: Optional[Bot] = None
+-        if TOKEN and CHAT:
++
++        # Create logs directory if it doesn't exist
++        log_dir = os.path.dirname(ALERT_LOG_PATH)
++        if log_dir and not os.path.exists(log_dir):
+             try:
+-                self.bot = Bot(TOKEN)
+-            except Exception as exc:
+-                logging.warning("Failed to create Telegram bot: %s", exc)
++                os.makedirs(log_dir, exist_ok=True)
++            except OSError as e:
++                logging.warning("Could not create log directory %s: %s", log_dir, e)
+ 
+-    def emit(self, record: logging.LogRecord) -> None:
+-        if not CHAT:
+-            return
+-        bot = self.bot
+-        if bot is None:
+-            return
+-        msg = f"\u26a0\ufe0f {record.levelname}: {record.getMessage()[:350]}"
++        # Set up rotating file handler
++        self.file_handler: Optional[RotatingFileHandler] = None
+         try:
+-            loop = asyncio.get_running_loop()
+-        except RuntimeError:
+-            return
++            self.file_handler = RotatingFileHandler(
++                ALERT_LOG_PATH,
++                maxBytes=ALERT_LOG_MAX_BYTES,
++                backupCount=ALERT_LOG_BACKUP_COUNT
++            )
++
++            # Format: timestamp | level | message
++            formatter = logging.Formatter(
++                '%(asctime)s | %(levelname)-8s | %(message)s',
++                datefmt='%Y-%m-%d %H:%M:%S'
++            )
++            self.file_handler.setFormatter(formatter)
++
++        except (OSError, IOError) as e:
++            logging.warning("Could not create alert log file %s: %s", ALERT_LOG_PATH, e)
+ 
+-        async def _send() -> None:
++    def emit(self, record: logging.LogRecord) -> None:
++        """Emit a log record to the alerts file."""
++        if self.file_handler:
++            try:
++                self.file_handler.emit(record)
++            except Exception:
++                # Don't let logging errors crash the application
++                self.handleError(record)
++        else:
++            # Fallback: just print to stderr
+             try:
+-                await bot.send_message(chat_id=CHAT, text=msg)
++                msg = self.format(record)
++                print(f"ALERT: {msg}", flush=True)
+             except Exception:
+-                logging.exception("Failed to send Telegram message")
++                pass
+ 
+-        try:
+-            loop.create_task(_send())
+-        except Exception:
+-            logging.exception("Failed to schedule Telegram message")
++
++def setup_alert_logging(logger: Optional[logging.Logger] = None) -> None:
++    """
++    Set up alert logging for critical events.
++
++    Args:
++        logger: Logger to add alert handler to (default: root logger)
++    """
++    if logger is None:
++        logger = logging.getLogger()
++
++    # Add critical alert handler
++    alert_handler = CriticalAlertHandler(level=logging.ERROR)
++    logger.addHandler(alert_handler)
++
++    logging.info("Alert logging configured: %s", ALERT_LOG_PATH)
+diff --git a/requirements.txt b/requirements.txt
+index fbfd54c..a46f902 100644
+--- a/requirements.txt
++++ b/requirements.txt
+@@ -1,7 +1,6 @@
+ rapidfuzz~=3.5.2
+ 
+ prometheus-client>=0.20
+-python-telegram-bot>=21.2
+ flake8>=7.0
+ flake8-bugbear>=24.3
+ black>=24.3
+diff --git a/tests/test_alerts.py b/tests/test_alerts.py
+index 7d5906c..f02bb6b 100644
+--- a/tests/test_alerts.py
++++ b/tests/test_alerts.py
+@@ -1,51 +1,96 @@
++"""Tests for alert logging system."""
++
+ import os
+ import sys
+ import logging
+-import importlib
+-import asyncio
++import tempfile
+ import pytest
+ 
+ sys.path.insert(
+     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+ )  # noqa: E402
+ 
+-import core.alerts as alerts  # noqa: E402
++from core.alerts import CriticalAlertHandler, setup_alert_logging  # noqa: E402
++
++
++def test_alert_handler_creation():
++    """Test that CriticalAlertHandler can be created."""
++    handler = CriticalAlertHandler(level=logging.ERROR)
++    assert handler is not None
++    assert handler.level == logging.ERROR
++
++
++def test_alert_handler_emit():
++    """Test that alert handler can emit log records."""
++    with tempfile.TemporaryDirectory() as tmpdir:
++        alert_path = os.path.join(tmpdir, "test_alerts.log")
++
++        # Patch the ALERT_LOG_PATH
++        import core.alerts
++        original_path = core.alerts.ALERT_LOG_PATH
++        core.alerts.ALERT_LOG_PATH = alert_path
+ 
++        try:
++            handler = CriticalAlertHandler(level=logging.ERROR)
+ 
+-def reload_alerts(monkeypatch, token=None, chat="1"):
+-    if token is None:
+-        monkeypatch.delenv("TELEGRAM_TOKEN", raising=False)
+-    else:
+-        monkeypatch.setenv("TELEGRAM_TOKEN", token)
+-    monkeypatch.setenv("TELEGRAM_CHAT_ID", chat)
+-    importlib.reload(alerts)
+-    return alerts
++            # Create a log record
++            record = logging.LogRecord(
++                name="test",
++                level=logging.ERROR,
++                pathname=__file__,
++                lineno=1,
++                msg="Test alert message",
++                args=(),
++                exc_info=None,
++            )
+ 
++            # Emit the record
++            handler.emit(record)
+ 
+-def test_bot_not_created_without_token(monkeypatch):
+-    mod = reload_alerts(monkeypatch, token="")
+-    handler = mod.TelegramHandler()
+-    assert handler.bot is None
++            # Check that file was created and contains the message
++            assert os.path.exists(alert_path)
++            with open(alert_path, 'r') as f:
++                content = f.read()
++                assert "Test alert message" in content
++                assert "ERROR" in content
++        finally:
++            core.alerts.ALERT_LOG_PATH = original_path
+ 
+ 
+-@pytest.mark.asyncio
+-async def test_emit_handles_network_error(monkeypatch):
+-    class DummyBot:
+-        async def send_message(self, *_, **__):
+-            raise RuntimeError("fail")
++def test_setup_alert_logging():
++    """Test that setup_alert_logging configures logging correctly."""
++    test_logger = logging.getLogger('test_logger')
++    initial_handlers = len(test_logger.handlers)
+ 
+-    mod = reload_alerts(monkeypatch, token="token")
+-    monkeypatch.setattr(mod, "Bot", lambda _: DummyBot())
+-    handler = mod.TelegramHandler()
++    setup_alert_logging(test_logger)
++
++    # Should have added one handler
++    assert len(test_logger.handlers) == initial_handlers + 1
++
++    # The new handler should be a CriticalAlertHandler
++    new_handler = test_logger.handlers[-1]
++    assert isinstance(new_handler, CriticalAlertHandler)
++
++
++def test_alert_handler_handles_errors():
++    """Test that alert handler doesn't crash on emit errors."""
++    handler = CriticalAlertHandler(level=logging.ERROR)
++
++    # Force file_handler to None to trigger fallback
++    handler.file_handler = None
+ 
+     record = logging.LogRecord(
+         name="test",
+         level=logging.ERROR,
+         pathname=__file__,
+         lineno=1,
+-        msg="oops",
++        msg="Test message",
+         args=(),
+         exc_info=None,
+     )
+-    handler.emit(record)
+-    await asyncio.sleep(0)
++
++    # Should not raise an exception
++    try:
++        handler.emit(record)
++    except Exception as e:
++        pytest.fail(f"Handler raised exception: {e}")
