@@ -8,6 +8,7 @@ from core.exchange_balances import (
     get_balance_manager,
     reset_balance_manager,
 )
+from core.trader import TradeExecutionError
 
 
 @pytest.fixture
@@ -302,7 +303,7 @@ def test_skip_balance_check_parameter():
                     _skip_balance_check=False  # Check should fail
                 )
                 assert False, "Should have raised InsufficientBalanceError"
-            except TraderInsufficientError:
+            except (InsufficientBalanceError, TradeExecutionError):
                 pass  # Expected
 
             # Now with _skip_balance_check=True, should not raise
@@ -311,9 +312,12 @@ def test_skip_balance_check_parameter():
                 with patch('aiohttp.ClientSession.post') as mock_post:
                     mock_response = MagicMock()
                     mock_response.status = 200
-                    mock_response.json = asyncio.coroutine(
-                        lambda: {'orderID': 'test123', 'status': 'FILLED'}
-                    )
+
+                    # Use async def instead of deprecated asyncio.coroutine
+                    async def mock_json():
+                        return {'orderID': 'test123', 'status': 'FILLED'}
+
+                    mock_response.json = mock_json
                     mock_post.return_value.__aenter__.return_value = mock_response
 
                     result = await place_order_polymarket(
@@ -328,7 +332,7 @@ def test_skip_balance_check_parameter():
                     )
                     # Should succeed (balance check was skipped)
                     assert result['status'] == 'success'
-            except TraderInsufficientError:
+            except (InsufficientBalanceError, TradeExecutionError):
                 assert False, "Should not raise when _skip_balance_check=True"
 
     asyncio.run(mock_order())
