@@ -9,7 +9,6 @@
 import asyncio
 from datetime import datetime
 from dataclasses import dataclass
-from typing import Optional
 
 from config import SLIP_BY_DEPTH
 from core.matcher import match, _normalize, _extract_teams
@@ -83,15 +82,15 @@ def demonstrate_fuzzy_matching():
 
     # Используем matcher для сопоставления
     print("\n🔍 Процесс сопоставления:")
-    print(f"  Минимальный порог сходства: 87%")
-    print(f"  Нормализация: lowercase, 'at' -> '@', убираем '-'")
-    print(f"  Алгоритм: rapidfuzz token_set_ratio")
+    print("  Минимальный порог сходства: 87%")
+    print("  Нормализация: lowercase, 'at' -> '@', убираем '-'")
+    print("  Алгоритм: rapidfuzz token_set_ratio")
 
     pairs = match(polymarket_events, sx_events, min_score=87)
 
     print(f"\n✅ Найдено пар: {len(pairs)}")
     for pm, sx in pairs:
-        print(f"\n  ➜ Совпадение:")
+        print("\n  ➜ Совпадение:")
         print(f"     Polymarket: {pm.title}")
         print(f"     Нормализованно: {_normalize(pm.title)}")
         print(f"     SX: {sx.title}")

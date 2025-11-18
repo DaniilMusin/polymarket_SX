@@ -260,7 +260,7 @@ class PolymarketOrderSigner:
                     token_id_clean = token_id_clean[2:]
                 # Validate hex string format
                 if not all(c in '0123456789abcdef' for c in token_id_clean):
-                    raise ValueError(f"Invalid hex string format")
+                    raise ValueError("Invalid hex string format")
                 token_id_int = int(token_id_clean, 16)
             else:
                 token_id_int = int(token_id)

@@ -10,7 +10,6 @@ import random
 from typing import Any, Dict, List, Tuple
 
 from core.metrics import init_metrics
-from core.alerts import TelegramHandler
 from core.processor import process_depth
 
 # Моковые данные для демонстрации
@@ -185,7 +184,6 @@ async def main() -> None:
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
     )
-    logging.getLogger().addHandler(TelegramHandler())
     init_metrics()
 
     print("🎭 ДЕМО-ВЕРСИЯ АРБИТРАЖНОГО БОТА")

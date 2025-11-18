@@ -3,7 +3,6 @@ import logging
 from aiohttp import ClientSession
 
 from core.metrics import init_metrics
-from core.alerts import TelegramHandler
 from core.processor import process_arbitrage
 from core.trader import execute_arbitrage_trade
 from connectors import polymarket, sx, kalshi  # noqa: F401
@@ -11,7 +10,6 @@ from connectors import polymarket, sx, kalshi  # noqa: F401
 
 async def main() -> None:
     logging.basicConfig(level=logging.INFO)
-    logging.getLogger().addHandler(TelegramHandler())
 
     logging.info("=" * 80)
     logging.info("🚀 Starting Polymarket-SX Arbitrage Bot")

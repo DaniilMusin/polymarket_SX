@@ -8,12 +8,9 @@ import logging
 import pytest
 
 from core.metrics import init_metrics
-from core.alerts import TelegramHandler
-from core.processor import process_depth
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
-logging.getLogger().addHandler(TelegramHandler())
 init_metrics()
 
 
@@ -38,27 +35,7 @@ async def test_bot_logic():
         print(f"   Глубина SX: {sx_depth}")
 
         try:
-            # Create mock orderbooks with the test depths
-            pm_book = {
-                'best_bid': 0.55,
-                'best_ask': 0.57,
-                'bid_depth': pm_depth,
-                'ask_depth': pm_depth,
-                'total_depth': pm_depth * 2,
-                'bids': [],
-                'asks': [],
-            }
-            sx_book = {
-                'best_bid': 0.56,
-                'best_ask': 0.58,
-                'bid_depth': sx_depth,
-                'ask_depth': sx_depth,
-                'total_depth': sx_depth * 2,
-                'bids': [],
-                'asks': [],
-            }
-            # Note: process_depth function signature has changed
-            # It now takes orderbook dicts and processes arbitrage opportunities
+            # Calculate slippage based on depth
             from core.processor import calculate_slippage
             pm_slip = calculate_slippage(pm_depth)
             sx_slip = calculate_slippage(sx_depth)

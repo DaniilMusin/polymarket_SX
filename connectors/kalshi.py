@@ -61,7 +61,7 @@ async def orderbook_depth(
         # Kalshi returns orderbook with yes/no bids as [price_cents, quantity] pairs
         # Check required keys exist (bad JSON if missing)
         if "orderbook" not in data:
-            raise KalshiError(f"bad response format: missing orderbook")
+            raise KalshiError("bad response format: missing orderbook")
 
         orderbook = data["orderbook"]
 
@@ -71,7 +71,7 @@ async def orderbook_depth(
 
         # Check for yes/no keys
         if "yes" not in orderbook or "no" not in orderbook:
-            raise KalshiError(f"bad response format: missing orderbook['yes'] or orderbook['no']")
+            raise KalshiError("bad response format: missing orderbook['yes'] or orderbook['no']")
 
         yes_bids_raw = orderbook["yes"]
         no_bids_raw = orderbook["no"]

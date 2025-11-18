@@ -57,7 +57,7 @@ async def orderbook_depth(
     try:
         # Check required keys exist (bad JSON if missing)
         if "bids" not in data or "asks" not in data:
-            raise OrderbookError(f"bad response format: missing bids or asks")
+            raise OrderbookError("bad response format: missing bids or asks")
 
         # Safely extract bids and asks with None checks
         bids_data = data["bids"]
@@ -71,7 +71,7 @@ async def orderbook_depth(
 
         # Check for "Yes" key
         if "Yes" not in bids_data or "Yes" not in asks_data:
-            raise OrderbookError(f"bad response format: missing bids['Yes'] or asks['Yes']")
+            raise OrderbookError("bad response format: missing bids['Yes'] or asks['Yes']")
 
         bids_yes = bids_data["Yes"]
         asks_yes = asks_data["Yes"]

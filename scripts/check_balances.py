@@ -11,8 +11,8 @@ from pathlib import Path
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from core.wallet import Wallet
-import aiohttp
+from core.wallet import Wallet  # noqa: E402
+import aiohttp  # noqa: E402
 
 
 class Colors:
@@ -68,7 +68,10 @@ async def check_polygon_balance(wallet: Wallet):
                     if balance_usdc < 10:
                         print(f"  {Colors.RED}⚠  Low balance! Recommended >= $10{Colors.END}")
                     elif balance_usdc < 100:
-                        print(f"  {Colors.YELLOW}⚠  Moderate balance. Recommended >= $100 for production{Colors.END}")
+                        print(
+                            f"  {Colors.YELLOW}⚠  Moderate balance. "
+                            f"Recommended >= $100 for production{Colors.END}"
+                        )
                     else:
                         print(f"  {Colors.GREEN}✓ Good balance{Colors.END}")
 
@@ -86,7 +89,7 @@ async def check_sx_balance():
     """Check balance on SX (would need API key and endpoint)."""
     print(f"\n{Colors.BOLD}Checking SX...{Colors.END}")
     print(f"  {Colors.YELLOW}ℹ  SX balance check requires specific API endpoint{Colors.END}")
-    print(f"  Please check manually at: https://sx.bet/")
+    print("  Please check manually at: https://sx.bet/")
     return None
 
 
@@ -94,7 +97,7 @@ async def check_kalshi_balance():
     """Check balance on Kalshi (would need API key)."""
     print(f"\n{Colors.BOLD}Checking Kalshi...{Colors.END}")
     print(f"  {Colors.YELLOW}ℹ  Kalshi balance check requires API authentication{Colors.END}")
-    print(f"  Please check manually at: https://kalshi.com/")
+    print("  Please check manually at: https://kalshi.com/")
     return None
 
 
@@ -145,9 +148,9 @@ async def main():
 
     print(f"\n{Colors.YELLOW}Note: SX and Kalshi balances need to be checked manually{Colors.END}")
     print(f"\n{Colors.BOLD}RECOMMENDATIONS:{Colors.END}")
-    print(f"  • Keep at least $100 on each exchange for testing")
-    print(f"  • Start with MAX_POSITION_SIZE = $10-50")
-    print(f"  • Monitor balances regularly\n")
+    print("  • Keep at least $100 on each exchange for testing")
+    print("  • Start with MAX_POSITION_SIZE = $10-50")
+    print("  • Monitor balances regularly\n")
 
 
 if __name__ == '__main__':

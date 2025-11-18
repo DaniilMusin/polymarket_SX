@@ -9,8 +9,6 @@ import argparse
 from aiohttp import ClientSession
 
 from core.metrics import init_metrics
-from core.alerts import TelegramHandler
-from core.processor import process_depth
 from connectors import polymarket, sx, kalshi  # noqa: F401
 
 # Реальные ID рынков для тестирования
@@ -84,7 +82,10 @@ async def run_arbitrage_cycle(
         opportunity = find_arbitrage_opportunity(pm_depth, sx_depth)
 
         if opportunity:
-            logging.info("🎯 Найдена арбитражная возможность: прибыль %.2f bps", opportunity.get('profit_bps', 0))
+            logging.info(
+                "🎯 Найдена арбитражная возможность: прибыль %.2f bps",
+                opportunity.get('profit_bps', 0)
+            )
         else:
             logging.info("ℹ️  Арбитражные возможности не найдены")
 
@@ -107,7 +108,6 @@ async def main() -> None:
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
     )
-    logging.getLogger().addHandler(TelegramHandler())
     init_metrics()
 
     logging.info("🤖 Запуск арбитражного бота...")

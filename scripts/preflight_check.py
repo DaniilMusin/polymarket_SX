@@ -11,7 +11,7 @@ from pathlib import Path
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from core.wallet import Wallet, WalletError
+from core.wallet import Wallet, WalletError  # noqa: E402
 
 
 class Colors:
@@ -100,18 +100,25 @@ def check_trading_config() -> dict:
     min_profit_bps = float(os.getenv('MIN_PROFIT_BPS', '10'))
     max_position_size = float(os.getenv('MAX_POSITION_SIZE', '1000'))
 
-    print(f"  ENABLE_REAL_TRADING: {Colors.GREEN if enable_trading else Colors.YELLOW}{enable_trading}{Colors.END}")
+    color = Colors.GREEN if enable_trading else Colors.YELLOW
+    print(f"  ENABLE_REAL_TRADING: {color}{enable_trading}{Colors.END}")
 
     if not enable_trading:
         print(f"    {Colors.YELLOW}⚠  Real trading is DISABLED (simulation mode){Colors.END}")
 
     print(f"  MIN_PROFIT_BPS: {min_profit_bps}")
     if min_profit_bps < 50:
-        print(f"    {Colors.YELLOW}⚠  Low threshold! Recommended >= 50 for production{Colors.END}")
+        print(
+            f"    {Colors.YELLOW}⚠  Low threshold! "
+            f"Recommended >= 50 for production{Colors.END}"
+        )
 
     print(f"  MAX_POSITION_SIZE: ${max_position_size}")
     if max_position_size > 100:
-        print(f"    {Colors.YELLOW}⚠  Large position size! Recommended <= $100 for testing{Colors.END}")
+        print(
+            f"    {Colors.YELLOW}⚠  Large position size! "
+            f"Recommended <= $100 for testing{Colors.END}"
+        )
 
     return {
         'enable_trading': enable_trading,
@@ -135,7 +142,10 @@ def check_alert_config() -> dict:
         results['telegram'] = True
     else:
         print(f"  {check_mark(False)} Telegram alerts not configured")
-        print(f"    {Colors.YELLOW}→ Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in .env{Colors.END}")
+        print(
+            f"    {Colors.YELLOW}→ Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID "
+            f"in .env{Colors.END}"
+        )
         results['telegram'] = False
 
     if discord_webhook:
@@ -148,7 +158,10 @@ def check_alert_config() -> dict:
 
     if not results.get('telegram') and not results.get('discord'):
         print(f"\n  {Colors.RED}⚠  NO ALERTS CONFIGURED!{Colors.END}")
-        print(f"  {Colors.RED}This is CRITICAL for production - you won't be notified of issues!{Colors.END}")
+        print(
+            f"  {Colors.RED}This is CRITICAL for production - "
+            f"you won't be notified of issues!{Colors.END}"
+        )
 
     return results
 
@@ -165,40 +178,42 @@ def print_summary(results: dict):
 
     if all_passed:
         print(f"{Colors.GREEN}{Colors.BOLD}✓ BASIC CHECKS PASSED{Colors.END}")
-        print(f"\nYour bot configuration is valid.\n")
+        print("\nYour bot configuration is valid.\n")
     else:
         print(f"{Colors.RED}{Colors.BOLD}✗ SOME CHECKS FAILED{Colors.END}")
-        print(f"\nPlease fix the issues above before starting the bot.\n")
+        print("\nPlease fix the issues above before starting the bot.\n")
         return False
 
     # Warnings
     print(f"{Colors.YELLOW}{Colors.BOLD}⚠  IMPORTANT WARNINGS:{Colors.END}\n")
 
     if not results.get('trading_config', {}).get('enable_trading'):
-        print(f"  • Real trading is DISABLED (simulation mode)")
-        print(f"    Set ENABLE_REAL_TRADING=true to enable real trading\n")
+        print("  • Real trading is DISABLED (simulation mode)")
+        print("    Set ENABLE_REAL_TRADING=true to enable real trading\n")
 
-    if not results.get('alerts', {}).get('telegram') and not results.get('alerts', {}).get('discord'):
+    no_telegram = not results.get('alerts', {}).get('telegram')
+    no_discord = not results.get('alerts', {}).get('discord')
+    if no_telegram and no_discord:
         print(f"  • {Colors.RED}NO ALERTS CONFIGURED!{Colors.END}")
-        print(f"    You MUST set up Telegram or Discord alerts for production!")
-        print(f"    See: scripts/setup_telegram_bot.py or scripts/setup_discord_webhook.py\n")
+        print("    You MUST set up Telegram or Discord alerts for production!")
+        print("    See: scripts/setup_telegram_bot.py or scripts/setup_discord_webhook.py\n")
 
     max_pos = results.get('trading_config', {}).get('max_position_size', 0)
     if max_pos > 100:
         print(f"  • Large MAX_POSITION_SIZE (${max_pos})")
-        print(f"    Recommended to start with $10-100 for testing\n")
+        print("    Recommended to start with $10-100 for testing\n")
 
     min_profit = results.get('trading_config', {}).get('min_profit_bps', 0)
     if min_profit < 50:
         print(f"  • Low MIN_PROFIT_BPS ({min_profit})")
-        print(f"    Recommended >= 50 bps (0.5%) for production\n")
+        print("    Recommended >= 50 bps (0.5%) for production\n")
 
     print(f"{Colors.BOLD}NEXT STEPS:{Colors.END}\n")
-    print(f"  1. Fix any warnings above")
-    print(f"  2. Check balance on exchanges: python scripts/check_balances.py")
-    print(f"  3. Run test with small amounts: python scripts/test_run.py")
-    print(f"  4. Start bot: python main.py")
-    print(f"  5. Monitor logs for 🚨 CRITICAL alerts\n")
+    print("  1. Fix any warnings above")
+    print("  2. Check balance on exchanges: python scripts/check_balances.py")
+    print("  3. Run test with small amounts: python scripts/test_run.py")
+    print("  4. Start bot: python main.py")
+    print("  5. Monitor logs for 🚨 CRITICAL alerts\n")
 
     return True
 
@@ -206,13 +221,13 @@ def print_summary(results: dict):
 def main():
     """Run all pre-flight checks."""
     print(f"{Colors.BOLD}{Colors.BLUE}")
-    print("╔════════════════════════════════════════════════════════════════════════════╗")
-    print("║                                                                            ║")
-    print("║            🚀 PRODUCTION PRE-FLIGHT CHECK                                  ║")
-    print("║                                                                            ║")
-    print("║            This script verifies your bot is ready for deployment          ║")
-    print("║                                                                            ║")
-    print("╚════════════════════════════════════════════════════════════════════════════╝")
+    print("╔══════════════════════════════════════════════════════════════════════╗")
+    print("║                                                                      ║")
+    print("║            🚀 PRODUCTION PRE-FLIGHT CHECK                            ║")
+    print("║                                                                      ║")
+    print("║         This script verifies your bot is ready for deployment       ║")
+    print("║                                                                      ║")
+    print("╚══════════════════════════════════════════════════════════════════════╝")
     print(f"{Colors.END}\n")
 
     # Load .env if it exists
@@ -220,7 +235,10 @@ def main():
         from dotenv import load_dotenv
         load_dotenv()
     except ImportError:
-        print(f"{Colors.YELLOW}⚠  python-dotenv not installed. Install it: pip install python-dotenv{Colors.END}\n")
+        print(
+            f"{Colors.YELLOW}⚠  python-dotenv not installed. "
+            f"Install it: pip install python-dotenv{Colors.END}\n"
+        )
 
     results = {}
 

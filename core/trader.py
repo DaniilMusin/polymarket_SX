@@ -193,10 +193,12 @@ async def place_order_polymarket(
         # Use Decimal for precise division to avoid floating-point precision loss
         if side.lower() == 'buy':
             maker_amount = size_wei  # USDC
-            taker_amount = int(Decimal(str(size_wei)) / Decimal(str(price)))  # Tokens (safe: price > 0 validated above)
+            # Tokens (safe: price > 0 validated above)
+            taker_amount = int(Decimal(str(size_wei)) / Decimal(str(price)))
             order_side = 0  # BUY
         else:
-            maker_amount = int(Decimal(str(size_wei)) / Decimal(str(price)))  # Tokens (safe: price > 0 validated above)
+            # Tokens (safe: price > 0 validated above)
+            maker_amount = int(Decimal(str(size_wei)) / Decimal(str(price)))
             taker_amount = size_wei  # USDC
             order_side = 1  # SELL
 
@@ -807,10 +809,14 @@ async def execute_arbitrage_trade(
 
             # Log the unhedged position risk and handle balances
             if buy_failed and not sell_failed:
+                sell_order_id = (
+                    sell_order.get('order_id') if isinstance(sell_order, dict)
+                    else 'unknown'
+                )
                 logging.error(
                     "🚨 CRITICAL: Buy failed but sell succeeded! "
                     "Unhedged position: %s %s @ %.4f",
-                    sell_exchange, sell_order.get('order_id'), sell_price
+                    sell_exchange, sell_order_id, sell_price
                 )
                 # Release buy balance (order didn't execute), commit sell balance (executed)
                 if buy_reserved:
@@ -820,10 +826,14 @@ async def execute_arbitrage_trade(
                     balance_manager.commit_order(sell_exchange, size)
                     sell_reserved = False
             elif sell_failed and not buy_failed:
+                buy_order_id = (
+                    buy_order.get('order_id') if isinstance(buy_order, dict)
+                    else 'unknown'
+                )
                 logging.error(
                     "🚨 CRITICAL: Sell failed but buy succeeded! "
                     "Unhedged position: %s %s @ %.4f",
-                    buy_exchange, buy_order.get('order_id'), buy_price
+                    buy_exchange, buy_order_id, buy_price
                 )
                 # Commit buy balance (executed), release sell balance (didn't execute)
                 if buy_reserved:
@@ -851,9 +861,11 @@ async def execute_arbitrage_trade(
         # that BOTH orders were FULLY FILLED (not cancelled or partially filled).
         # This is CRITICAL for arbitrage - any partial fill or cancellation would
         # create an unhedged position and potential loss.
+        buy_order_id = buy_order.get('order_id') if isinstance(buy_order, dict) else 'unknown'
+        sell_order_id = sell_order.get('order_id') if isinstance(sell_order, dict) else 'unknown'
         logging.info(
             "✅ Both orders placed successfully: buy=%s, sell=%s",
-            buy_order.get('order_id'), sell_order.get('order_id')
+            buy_order_id, sell_order_id
         )
 
         # Commit both balances (orders were successful)
