@@ -1,7 +1,10 @@
 import logging
 from typing import Dict, List, Optional
 
-from config import SLIP_BY_DEPTH, EXCHANGE_FEES, DEFAULT_FEE, MAX_POSITION_SIZE, MAX_POSITION_PERCENT, MIN_PROFIT_BPS
+from config import (
+    SLIP_BY_DEPTH, EXCHANGE_FEES, DEFAULT_FEE, MAX_POSITION_SIZE,
+    MAX_POSITION_PERCENT, MIN_PROFIT_BPS
+)
 from core.metrics import g_edge, g_trades
 from core.exchange_balances import get_balance_manager, InsufficientBalanceError
 
@@ -74,7 +77,10 @@ def validate_orderbook(orderbook: dict) -> bool:
         )
         return False
 
-    logging.debug("Orderbook validated successfully: bid=%.4f, ask=%.4f", orderbook['best_bid'], orderbook['best_ask'])
+    logging.debug(
+        "Orderbook validated successfully: bid=%.4f, ask=%.4f",
+        orderbook['best_bid'], orderbook['best_ask']
+    )
     return True
 
 
@@ -133,7 +139,10 @@ def find_arbitrage_opportunity(
     if min_profit_bps is None:
         min_profit_bps = MIN_PROFIT_BPS
 
-    logging.debug("Finding arbitrage opportunity between PM and SX (min profit: %.2f bps)", min_profit_bps)
+    logging.debug(
+        "Finding arbitrage opportunity between PM and SX (min profit: %.2f bps)",
+        min_profit_bps
+    )
 
     # Validate orderbooks
     if not validate_orderbook(pm_book):
@@ -208,14 +217,22 @@ def find_arbitrage_opportunity(
         # 1. Market depth (configurable % to avoid slippage)
         # 2. Hard cap from config (default $1000)
         # 3. Available balance on BOTH exchanges (CRITICAL!)
-        position_size = min(max_size * MAX_POSITION_PERCENT, MAX_POSITION_SIZE, max_balance)
+        position_size = min(
+            max_size * MAX_POSITION_PERCENT, MAX_POSITION_SIZE, max_balance
+        )
     except InsufficientBalanceError as exc:
-        # If balance manager not available or has insufficient balance, use fallback logic
-        logging.warning("Balance manager unavailable or insufficient balance: %s, using default limit", exc)
+        # If balance manager not available or has insufficient balance, use fallback
+        logging.warning(
+            "Balance manager unavailable or insufficient balance: %s, using default",
+            exc
+        )
         position_size = min(max_size * MAX_POSITION_PERCENT, MAX_POSITION_SIZE)
     except Exception as exc:
         # Catch any other unexpected errors
-        logging.warning("Unexpected error getting balance: %s, using default limit", exc, exc_info=True)
+        logging.warning(
+            "Unexpected error getting balance: %s, using default limit",
+            exc, exc_info=True
+        )
         position_size = min(max_size * MAX_POSITION_PERCENT, MAX_POSITION_SIZE)
 
     # Check minimum position size (avoid zero or very small positions)

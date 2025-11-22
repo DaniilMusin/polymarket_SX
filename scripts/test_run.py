@@ -75,7 +75,9 @@ def main():
 
     # Display test parameters
     print(f"{Colors.BOLD}Test Parameters:{Colors.END}\n")
-    print(f"  Mode: {Colors.GREEN if args.real else Colors.YELLOW}{'REAL TRADING' if args.real else 'SIMULATION'}{Colors.END}")
+    mode_color = Colors.GREEN if args.real else Colors.YELLOW
+    mode_text = 'REAL TRADING' if args.real else 'SIMULATION'
+    print(f"  Mode: {mode_color}{mode_text}{Colors.END}")
     print(f"  Max Position Size: ${args.position_size}")
     print(f"  Min Profit: {args.min_profit} bps ({args.min_profit/100:.2f}%)")
     print(f"  Duration: {args.duration} seconds ({args.duration/60:.1f} minutes)")
@@ -84,7 +86,7 @@ def main():
     if args.real:
         print(f"{Colors.RED}{Colors.BOLD}⚠️  WARNING: REAL TRADING ENABLED!{Colors.END}")
         print(f"{Colors.RED}Real money will be used. Are you sure?{Colors.END}")
-        response = input(f"Type 'YES' to continue: ")
+        response = input("Type 'YES' to continue: ")
         if response != 'YES':
             print(f"\n{Colors.YELLOW}Test cancelled.{Colors.END}")
             return
@@ -108,7 +110,10 @@ def main():
 
         def stop_after_timeout():
             time.sleep(args.duration)
-            print(f"\n\n{Colors.YELLOW}Test duration reached ({args.duration}s). Stopping...{Colors.END}")
+            print(
+                f"\n\n{Colors.YELLOW}Test duration reached ({args.duration}s). "
+                f"Stopping...{Colors.END}"
+            )
             os._exit(0)
 
         timer = threading.Thread(target=stop_after_timeout, daemon=True)

@@ -57,7 +57,7 @@ async def orderbook_depth(
     try:
         # Check required keys exist (bad JSON if missing)
         if "bids" not in data or "asks" not in data:
-            raise SxError(f"bad response format: missing bids or asks")
+            raise SxError("bad response format: missing bids or asks")
 
         # Safely extract bids and asks with None checks
         bids_raw = data["bids"]

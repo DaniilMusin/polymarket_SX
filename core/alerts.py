@@ -55,7 +55,7 @@ class CriticalAlertHandler(logging.Handler):
             )
             self.file_handler.setFormatter(formatter)
 
-        except (OSError, IOError) as e:
+        except OSError as e:
             logging.warning("Could not create alert log file %s: %s", ALERT_LOG_PATH, e)
 
     def emit(self, record: logging.LogRecord) -> None:
