@@ -41,3 +41,6 @@ EXCHANGE_FEES = {
     'kalshi': float(os.getenv('KALSHI_FEE', '0.003')),  # 0.3% total (0.15% per side)
 }
 DEFAULT_FEE = float(os.getenv('DEFAULT_FEE', '0.002'))  # Default 0.2% total
+
+# Trading mode configuration
+ENABLE_REAL_TRADING = os.getenv('ENABLE_REAL_TRADING', 'false').lower() == 'true'
