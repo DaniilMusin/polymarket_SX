@@ -345,17 +345,18 @@ async def process_arbitrage(
     sx_book: dict,
     pm_market_id: str | None = None,
     sx_market_id: str | None = None,
-    execute: bool = False
 ) -> Optional[Dict]:
     """
     Process arbitrage between Polymarket and SX.
+
+    This function finds arbitrage opportunities but does NOT execute them.
+    Use execute_arbitrage_trade() from core.trader to actually place orders.
 
     Args:
         pm_book: Polymarket orderbook
         sx_book: SX orderbook
         pm_market_id: Polymarket market identifier
         sx_market_id: SX market identifier
-        execute: If True, execute the trade (requires order placement functions)
 
     Returns:
         Arbitrage opportunity dict or None
@@ -363,18 +364,5 @@ async def process_arbitrage(
     opportunity = find_arbitrage_opportunity(
         pm_book, sx_book, pm_market_id=pm_market_id, sx_market_id=sx_market_id
     )
-
-    if not opportunity:
-        return None
-
-    if execute:
-        logging.warning(
-            "Trade execution requested but not implemented. "
-            "Arbitrage opportunity logged but not executed."
-        )
-        # TODO: Implement trade execution
-        # - Place orders on both exchanges
-        # - Monitor execution
-        # - Update PnL metrics
 
     return opportunity

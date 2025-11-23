@@ -7,6 +7,7 @@ from core.metrics import init_metrics
 from core.processor import process_arbitrage
 from core.trader import execute_arbitrage_trade
 from core.statistics import get_statistics_collector
+from core.validation import validate_all
 from connectors import polymarket, sx, kalshi  # noqa: F401
 import config
 
@@ -14,11 +15,70 @@ import config
 async def main() -> None:
     setup_logging(level=logging.INFO)
 
+    # ==================================================================================
+    # CRITICAL: Validate configuration before ANY trading operations
+    # ==================================================================================
+    # This checks that risk parameters are safe (MIN_PROFIT_BPS, MAX_POSITION_SIZE)
+    # and that credentials are configured for real trading mode.
+    # Will raise RuntimeError and refuse to start if config is dangerous.
+    # ==================================================================================
+    try:
+        validate_all()
+    except RuntimeError as e:
+        logging.error("=" * 80)
+        logging.error("❌ CONFIGURATION VALIDATION FAILED")
+        logging.error("=" * 80)
+        logging.error(str(e))
+        logging.error("=" * 80)
+        logging.error("Fix the issues above and try again.")
+        logging.error("=" * 80)
+        return
+
     logging.info("=" * 80)
     logging.info("🚀 Starting Polymarket-SX Arbitrage Bot")
     logging.info("=" * 80)
     logging.info("Mode: %s", "REAL TRADING" if config.ENABLE_REAL_TRADING else "SIMULATION")
     logging.info("=" * 80)
+
+    # ==================================================================================
+    # CRITICAL: Double-confirm for real trading mode
+    # ==================================================================================
+    # Even if ENABLE_REAL_TRADING=true in .env, require explicit user confirmation
+    # to prevent accidental real trading execution
+    # ==================================================================================
+    if config.ENABLE_REAL_TRADING:
+        logging.warning("=" * 80)
+        logging.warning("⚠️  REAL TRADING MODE ENABLED")
+        logging.warning("=" * 80)
+        logging.warning("")
+        logging.warning("This will execute REAL orders on exchanges with REAL money.")
+        logging.warning("Make sure you understand the risks and have tested in simulation first.")
+        logging.warning("")
+        logging.warning("=" * 80)
+
+        try:
+            # Use input() for interactive confirmation
+            answer = input(
+                "Type 'YES' (all capitals) to confirm you want to proceed with REAL trading: "
+            ).strip()
+        except (EOFError, KeyboardInterrupt):
+            logging.error("Confirmation cancelled by user (Ctrl+C or EOF)")
+            return
+
+        if answer != "YES":
+            logging.error("=" * 80)
+            logging.error("❌ REAL TRADING CANCELLED")
+            logging.error("=" * 80)
+            logging.error(f"You entered: '{answer}'")
+            logging.error("Required: 'YES' (all capitals)")
+            logging.error("")
+            logging.error("To run in simulation mode, set ENABLE_REAL_TRADING=false in .env")
+            logging.error("=" * 80)
+            return
+
+        logging.info("=" * 80)
+        logging.info("✓ REAL TRADING CONFIRMED - Proceeding with live execution")
+        logging.info("=" * 80)
 
     init_metrics()
     stats_collector = get_statistics_collector()
@@ -97,7 +157,7 @@ async def main() -> None:
 
             # Find arbitrage opportunity
             opportunity = await process_arbitrage(
-                pm_book, sx_book, pm_market_id=pm_market_id, sx_market_id=sx_market_id, execute=False
+                pm_book, sx_book, pm_market_id=pm_market_id, sx_market_id=sx_market_id
             )
 
             if opportunity:
