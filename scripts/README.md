@@ -147,13 +147,125 @@ echo "✅ Ready to deploy!"
 
 ---
 
-## 📊 Monitoring (TODO)
+## 📊 Production Monitoring
 
-Future scripts for production monitoring:
+### `monitor_logs.py` - Real-Time Log Monitor
 
-- `monitor_logs.py` - Real-time log monitoring with filters
-- `check_positions.py` - Check for open/unhedged positions
-- `export_metrics.py` - Export metrics to CSV/JSON
+Monitor bot logs with pattern highlighting for critical issues.
+
+```bash
+# Follow logs in real-time
+python scripts/monitor_logs.py --follow
+
+# Show only critical issues (panic, unhedged, errors)
+python scripts/monitor_logs.py --follow --critical-only
+
+# Show last 100 lines, errors only
+python scripts/monitor_logs.py --tail 100 --errors-only
+```
+
+**Detects:**
+- 🚨 Panic mode triggers
+- ⚠️ Unhedged positions
+- 🔴 Trade execution failures
+- 📡 Repeated API errors
+- 💰 Insufficient balance errors
+
+**Use this:**
+- During first production runs
+- After configuration changes
+- When debugging issues
+
+---
+
+### `check_positions.py` - Position Checker
+
+Check for unhedged/orphaned positions and balance discrepancies.
+
+```bash
+# One-time check
+python scripts/check_positions.py
+
+# Continuous monitoring (check every 5 minutes)
+python scripts/check_positions.py --loop 300
+
+# Send alerts if issues detected
+python scripts/check_positions.py --loop 300 --alert-on-unhedged
+```
+
+**Checks:**
+- Internal risk manager state
+- Virtual balance availability
+- Locked balances with no open arbitrages
+- Discrepancies between tracked and real positions
+
+**Critical for:**
+- Detecting crashes during trade execution
+- Finding orphaned positions
+- Balance reconciliation
+
+---
+
+### `export_metrics.py` - Metrics Export
+
+Export bot metrics for offline analysis.
+
+```bash
+# Print summary to terminal
+python scripts/export_metrics.py
+
+# Export to JSON
+python scripts/export_metrics.py --format json --output metrics.json
+
+# Export to CSV
+python scripts/export_metrics.py --format csv --output metrics.csv
+```
+
+**Exports:**
+- Prometheus metrics (trades, PnL, opportunities)
+- Balance state (available, locked, used)
+- Risk state (exposure, open arbitrages, panic mode)
+- Recent statistics from opportunities.csv
+
+**Use for:**
+- Performance analysis
+- Balance tracking over time
+- Incident investigation
+- Reporting
+
+---
+
+### `validate_events.py` - Event Validation
+
+**CRITICAL**: Validate that events on different exchanges refer to the SAME real-world occurrence.
+
+```bash
+python scripts/validate_events.py \
+  --pm-event "Trump wins 2024 election" \
+  --pm-desc "Resolves YES if Trump wins..." \
+  --sx-event "Trump 2024 winner" \
+  --sx-desc "Resolves to YES if Donald Trump..." \
+  --strict
+```
+
+**Why this matters:**
+- Prevents arbitrage between DIFFERENT events
+- Different events = guaranteed loss, not profit
+- Uses Perplexity AI for semantic comparison
+
+**When to use:**
+- BEFORE enabling real trading on new market pairs
+- When market descriptions are ambiguous
+- If resolution criteria differ across exchanges
+
+**Requirements:**
+- `PERPLEXITY_API_KEY` in .env
+- Or `ALLOW_UNVALIDATED_EVENTS=true` (NOT recommended)
+
+---
+
+### Future scripts (TODO)
+
 - `backup_config.py` - Backup configuration and logs
 
 ---

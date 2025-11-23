@@ -127,9 +127,98 @@ def check_trading_config() -> dict:
     }
 
 
+def check_event_validation() -> dict:
+    """Check event validation configuration (CRITICAL for production)."""
+    print(f"\n{Colors.BOLD}5. Checking event validation (CRITICAL)...{Colors.END}")
+
+    perplexity_key = os.getenv('PERPLEXITY_API_KEY')
+    allow_unvalidated = os.getenv('ALLOW_UNVALIDATED_EVENTS', 'false').lower() == 'true'
+
+    results = {}
+
+    if perplexity_key:
+        print(f"  {check_mark(True)} PERPLEXITY_API_KEY: {perplexity_key[:8]}...")
+        print(f"    {Colors.GREEN}→ Event validation is ENABLED{Colors.END}")
+        results['enabled'] = True
+        results['safe'] = True
+    elif allow_unvalidated:
+        print(f"  {check_mark(False)} PERPLEXITY_API_KEY: Not set")
+        print(f"  {Colors.YELLOW}→ ALLOW_UNVALIDATED_EVENTS=true{Colors.END}")
+        print(f"    {Colors.RED}⚠  WARNING: Event validation is DISABLED!{Colors.END}")
+        print(f"    {Colors.RED}   You may arbitrage between DIFFERENT events and LOSE MONEY!{Colors.END}")
+        results['enabled'] = False
+        results['safe'] = False
+    else:
+        print(f"  {check_mark(False)} PERPLEXITY_API_KEY: Not set")
+        print(f"  {check_mark(False)} ALLOW_UNVALIDATED_EVENTS: false (safe default)")
+        print(f"    {Colors.YELLOW}→ Bot will REFUSE to start without event validation{Colors.END}")
+        print(f"    {Colors.YELLOW}   Set PERPLEXITY_API_KEY to enable validation{Colors.END}")
+        results['enabled'] = False
+        results['safe'] = True  # Safe because bot will refuse to start
+
+    return results
+
+
+def check_balance_limits() -> dict:
+    """Check virtual balance configuration."""
+    print(f"\n{Colors.BOLD}6. Checking virtual balance limits...{Colors.END}")
+
+    exchange_balance = float(os.getenv('EXCHANGE_INITIAL_BALANCE', '10.0'))
+    pm_balance = float(os.getenv('POLYMARKET_BALANCE', str(exchange_balance)))
+    sx_balance = float(os.getenv('SX_BALANCE', str(exchange_balance)))
+    kalshi_balance = float(os.getenv('KALSHI_BALANCE', str(exchange_balance)))
+
+    print(f"  EXCHANGE_INITIAL_BALANCE (default): ${exchange_balance}")
+    print(f"  POLYMARKET_BALANCE: ${pm_balance}")
+    print(f"  SX_BALANCE: ${sx_balance}")
+    print(f"  KALSHI_BALANCE: ${kalshi_balance}")
+
+    total_exposure = pm_balance + sx_balance + kalshi_balance
+
+    if total_exposure > 100:
+        print(f"    {Colors.YELLOW}⚠  Total exposure: ${total_exposure:.2f}{Colors.END}")
+        print(f"    {Colors.YELLOW}   Recommended <= $100 for initial testing{Colors.END}")
+
+    return {
+        'polymarket': pm_balance,
+        'sx': sx_balance,
+        'kalshi': kalshi_balance,
+        'total': total_exposure,
+    }
+
+
+def check_risk_limits() -> dict:
+    """Check risk management configuration."""
+    print(f"\n{Colors.BOLD}7. Checking risk limits...{Colors.END}")
+
+    max_market_exposure = float(os.getenv('MAX_MARKET_EXPOSURE', '1500.0'))
+    max_exchange_exposure = float(os.getenv('MAX_EXCHANGE_EXPOSURE', '2500.0'))
+    max_open_arbs = int(os.getenv('MAX_OPEN_ARBITRAGES', '3'))
+    panic_on_partial = os.getenv('PANIC_TRIGGER_ON_PARTIAL', 'true').lower() == 'true'
+
+    print(f"  MAX_MARKET_EXPOSURE: ${max_market_exposure}")
+    print(f"  MAX_EXCHANGE_EXPOSURE: ${max_exchange_exposure}")
+    print(f"  MAX_OPEN_ARBITRAGES: {max_open_arbs}")
+    print(f"  PANIC_TRIGGER_ON_PARTIAL: {panic_on_partial}")
+
+    if max_exchange_exposure > 5000:
+        print(f"    {Colors.YELLOW}⚠  Very high exchange exposure limit!{Colors.END}")
+
+    if not panic_on_partial:
+        print(f"    {Colors.RED}⚠  WARNING: Panic on partial fill is DISABLED{Colors.END}")
+        print(f"    {Colors.RED}   Recommended to keep PANIC_TRIGGER_ON_PARTIAL=true{Colors.END}")
+
+    return {
+        'max_market_exposure': max_market_exposure,
+        'max_exchange_exposure': max_exchange_exposure,
+        'max_open_arbs': max_open_arbs,
+        'panic_on_partial': panic_on_partial,
+    }
+
+
 def check_alert_config() -> dict:
     """Check alert configuration."""
-    print(f"\n{Colors.BOLD}5. Checking alert configuration...{Colors.END}")
+    print(f"\n{Colors.BOLD}8. Checking alert configuration...{Colors.END}")
 
     telegram_token = os.getenv('TELEGRAM_BOT_TOKEN')
     telegram_chat_id = os.getenv('TELEGRAM_CHAT_ID')
@@ -184,18 +273,39 @@ def print_summary(results: dict):
         print("\nPlease fix the issues above before starting the bot.\n")
         return False
 
-    # Warnings
-    print(f"{Colors.YELLOW}{Colors.BOLD}⚠  IMPORTANT WARNINGS:{Colors.END}\n")
+    # Check for CRITICAL issues that block real trading
+    enable_trading = results.get('trading_config', {}).get('enable_trading', False)
+    event_val_safe = results.get('event_validation', {}).get('safe', True)
 
-    if not results.get('trading_config', {}).get('enable_trading'):
-        print("  • Real trading is DISABLED (simulation mode)")
-        print("    Set ENABLE_REAL_TRADING=true to enable real trading\n")
+    critical_issues = []
+
+    if enable_trading and not event_val_safe:
+        critical_issues.append(
+            "Event validation is DISABLED but real trading is ENABLED - "
+            "this is DANGEROUS!"
+        )
 
     no_telegram = not results.get('alerts', {}).get('telegram')
     no_discord = not results.get('alerts', {}).get('discord')
-    if no_telegram and no_discord:
-        print(f"  • {Colors.RED}NO ALERTS CONFIGURED!{Colors.END}")
-        print("    You MUST set up Telegram or Discord alerts for production!")
+    if enable_trading and no_telegram and no_discord:
+        critical_issues.append("Real trading enabled but NO ALERTS configured!")
+
+    if critical_issues:
+        print(f"{Colors.RED}{Colors.BOLD}🚨 CRITICAL ISSUES (BLOCKING):{Colors.END}\n")
+        for issue in critical_issues:
+            print(f"  • {Colors.RED}{issue}{Colors.END}\n")
+        print(f"  {Colors.RED}Bot should NOT be started with these issues!{Colors.END}\n")
+
+    # Warnings
+    print(f"{Colors.YELLOW}{Colors.BOLD}⚠  IMPORTANT WARNINGS:{Colors.END}\n")
+
+    if not enable_trading:
+        print("  • Real trading is DISABLED (simulation mode)")
+        print("    Set ENABLE_REAL_TRADING=true to enable real trading\n")
+
+    if no_telegram and no_discord and not enable_trading:
+        print(f"  • {Colors.YELLOW}NO ALERTS CONFIGURED{Colors.END}")
+        print("    Recommended to set up Telegram or Discord alerts")
         print("    See: scripts/setup_telegram_bot.py or scripts/setup_discord_webhook.py\n")
 
     max_pos = results.get('trading_config', {}).get('max_position_size', 0)
@@ -207,6 +317,11 @@ def print_summary(results: dict):
     if min_profit < 50:
         print(f"  • Low MIN_PROFIT_BPS ({min_profit})")
         print("    Recommended >= 50 bps (0.5%) for production\n")
+
+    total_bal = results.get('balance_limits', {}).get('total', 0)
+    if total_bal > 100:
+        print(f"  • High total virtual balance (${total_bal:.2f})")
+        print("    Recommended <= $100 for initial testing\n")
 
     print(f"{Colors.BOLD}NEXT STEPS:{Colors.END}\n")
     print("  1. Fix any warnings above")
@@ -247,6 +362,9 @@ def main():
     results['wallet'], wallet_address = check_private_key()
     results['api_keys'] = check_api_keys()
     results['trading_config'] = check_trading_config()
+    results['event_validation'] = check_event_validation()
+    results['balance_limits'] = check_balance_limits()
+    results['risk_limits'] = check_risk_limits()
     results['alerts'] = check_alert_config()
 
     # Print summary

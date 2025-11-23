@@ -74,12 +74,36 @@ class EventValidator:
             EventValidationError: If API request fails or response is invalid
         """
         if not self.api_key:
-            logging.warning("Event validation skipped: API key not set")
+            # CRITICAL SECURITY: Fail-safe approach - do not assume events are the same
+            # if validation is disabled. This prevents dangerous arbitrage between
+            # different events when PERPLEXITY_API_KEY is not configured.
+            #
+            # To explicitly allow unvalidated trading (NOT RECOMMENDED), set:
+            # ALLOW_UNVALIDATED_EVENTS=true in .env
+            allow_unvalidated = os.getenv("ALLOW_UNVALIDATED_EVENTS", "false").lower() == "true"
+
+            if not allow_unvalidated:
+                logging.error(
+                    "Event validation BLOCKED: PERPLEXITY_API_KEY not set and "
+                    "ALLOW_UNVALIDATED_EVENTS is not enabled. "
+                    "This is a FAIL-SAFE to prevent arbitrage between different events."
+                )
+                raise EventValidationError(
+                    "Event validation required but PERPLEXITY_API_KEY not configured. "
+                    "Either set PERPLEXITY_API_KEY or explicitly enable ALLOW_UNVALIDATED_EVENTS=true "
+                    "(NOT RECOMMENDED for production)"
+                )
+
+            # User explicitly allowed unvalidated events - proceed with warning
+            logging.warning(
+                "Event validation skipped: API key not set but ALLOW_UNVALIDATED_EVENTS=true. "
+                "THIS IS DANGEROUS - you may trade between different events!"
+            )
             return {
-                "are_same": True,  # Assume same if validation is disabled
+                "are_same": True,  # User accepted the risk
                 "confidence": "unknown",
-                "reasoning": "Validation disabled: API key not set",
-                "warning": "Event validation is disabled",
+                "reasoning": "Validation disabled: API key not set, user allowed unvalidated",
+                "warning": "Event validation is disabled - RISK OF TRADING DIFFERENT EVENTS",
             }
 
         # Build the prompt for reasoning

@@ -17,12 +17,14 @@ SX_API_URL = os.getenv('SX_API_URL', 'https://api.sx.bet')
 KALSHI_API_URL = os.getenv('KALSHI_API_URL', 'https://api.elections.kalshi.com/trade-api/v2')
 
 # Trading configuration
-MIN_PROFIT_BPS = float(os.getenv('MIN_PROFIT_BPS', '10.0'))
-MAX_POSITION_SIZE = float(os.getenv('MAX_POSITION_SIZE', '1000.0'))
-MAX_POSITION_PERCENT = float(os.getenv('MAX_POSITION_PERCENT', '0.1'))
-MAX_MARKET_EXPOSURE = float(os.getenv('MAX_MARKET_EXPOSURE', '1500.0'))
-MAX_EXCHANGE_EXPOSURE = float(os.getenv('MAX_EXCHANGE_EXPOSURE', '2500.0'))
-MAX_OPEN_ARBITRAGES = int(os.getenv('MAX_OPEN_ARBITRAGES', '3'))
+# IMPORTANT: These are CONSERVATIVE defaults for initial testing.
+# Adjust in .env after testing with small amounts successfully.
+MIN_PROFIT_BPS = float(os.getenv('MIN_PROFIT_BPS', '50.0'))  # Require 50 bps (0.5%) minimum profit
+MAX_POSITION_SIZE = float(os.getenv('MAX_POSITION_SIZE', '10.0'))  # Max $10 per trade
+MAX_POSITION_PERCENT = float(os.getenv('MAX_POSITION_PERCENT', '0.1'))  # Use 10% of available depth
+MAX_MARKET_EXPOSURE = float(os.getenv('MAX_MARKET_EXPOSURE', '50.0'))  # Max $50 per market
+MAX_EXCHANGE_EXPOSURE = float(os.getenv('MAX_EXCHANGE_EXPOSURE', '100.0'))  # Max $100 per exchange
+MAX_OPEN_ARBITRAGES = int(os.getenv('MAX_OPEN_ARBITRAGES', '1'))  # Only 1 concurrent arbitrage
 PANIC_TRIGGER_ON_PARTIAL = os.getenv('PANIC_TRIGGER_ON_PARTIAL', 'true').lower() == 'true'
 
 # Logging configuration
