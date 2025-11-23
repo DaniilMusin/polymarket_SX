@@ -2,6 +2,7 @@ import asyncio
 import logging
 from aiohttp import ClientSession
 
+from core.logging_config import setup_logging
 from core.metrics import init_metrics
 from core.processor import process_arbitrage
 from core.trader import execute_arbitrage_trade
@@ -9,7 +10,7 @@ from connectors import polymarket, sx, kalshi  # noqa: F401
 
 
 async def main() -> None:
-    logging.basicConfig(level=logging.INFO)
+    setup_logging(level=logging.INFO)
 
     logging.info("=" * 80)
     logging.info("🚀 Starting Polymarket-SX Arbitrage Bot")
@@ -58,7 +59,9 @@ async def main() -> None:
                 return
 
             # Find arbitrage opportunity
-            opportunity = await process_arbitrage(pm_book, sx_book, execute=False)
+            opportunity = await process_arbitrage(
+                pm_book, sx_book, pm_market_id=pm_market_id, sx_market_id=sx_market_id, execute=False
+            )
 
             if opportunity:
                 logging.info("🎯 Arbitrage opportunity found!")

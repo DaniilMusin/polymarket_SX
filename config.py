@@ -20,6 +20,15 @@ KALSHI_API_URL = os.getenv('KALSHI_API_URL', 'https://api.elections.kalshi.com/t
 MIN_PROFIT_BPS = float(os.getenv('MIN_PROFIT_BPS', '10.0'))
 MAX_POSITION_SIZE = float(os.getenv('MAX_POSITION_SIZE', '1000.0'))
 MAX_POSITION_PERCENT = float(os.getenv('MAX_POSITION_PERCENT', '0.1'))
+MAX_MARKET_EXPOSURE = float(os.getenv('MAX_MARKET_EXPOSURE', '1500.0'))
+MAX_EXCHANGE_EXPOSURE = float(os.getenv('MAX_EXCHANGE_EXPOSURE', '2500.0'))
+MAX_OPEN_ARBITRAGES = int(os.getenv('MAX_OPEN_ARBITRAGES', '3'))
+PANIC_TRIGGER_ON_PARTIAL = os.getenv('PANIC_TRIGGER_ON_PARTIAL', 'true').lower() == 'true'
+
+# Logging configuration
+LOG_DIR = os.getenv('LOG_DIR', 'logs')
+LOG_MAX_BYTES = int(os.getenv('LOG_MAX_BYTES', str(5 * 1024 * 1024)))
+LOG_BACKUP_COUNT = int(os.getenv('LOG_BACKUP_COUNT', '10'))
 
 # Retry configuration
 RETRY_ATTEMPTS = int(os.getenv('RETRY_ATTEMPTS', '3'))

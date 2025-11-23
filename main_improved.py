@@ -8,6 +8,7 @@ import logging
 import argparse
 from aiohttp import ClientSession
 
+from core.logging_config import setup_logging
 from core.metrics import init_metrics
 from connectors import polymarket, sx, kalshi  # noqa: F401
 
@@ -104,10 +105,7 @@ async def main() -> None:
     )
     args = parser.parse_args()
 
-    # Настройка логирования
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-    )
+    setup_logging(level=logging.INFO)
     init_metrics()
 
     logging.info("🤖 Запуск арбитражного бота...")

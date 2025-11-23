@@ -20,6 +20,9 @@ from config import API_TIMEOUT_TOTAL, API_TIMEOUT_CONNECT
 from core.metrics import g_trades, update_pnl
 from core.wallet import Wallet, PolymarketOrderSigner, WalletError
 from core.exchange_balances import get_balance_manager, InsufficientBalanceError
+from core.logging_config import get_trade_logger
+from core.risk import get_risk_manager, PanicError
+from core.alert_manager import send_critical_alert
 
 
 class TradeExecutionError(Exception):
@@ -690,10 +693,25 @@ async def execute_arbitrage_trade(
         )
     # ======================== END VALIDATION ========================
 
+    trade_logger = get_trade_logger()
     logging.info(
         "Executing arbitrage trade: Buy %s @ %.4f, Sell %s @ %.4f, Size: $%.2f",
         buy_exchange, buy_price, sell_exchange, sell_price, size
     )
+
+    risk_manager = get_risk_manager()
+    reservation_id: Optional[str] = None
+    try:
+        reservation_id = risk_manager.reserve_trade(
+            buy_exchange,
+            sell_exchange,
+            pm_market_id,
+            sx_market_id,
+            size,
+        )
+    except PanicError as exc:
+        logging.error("Trade blocked by risk manager: %s", exc)
+        raise TradeExecutionError(str(exc)) from exc
 
     if dry_run or not wallet:
         logging.info("DRY RUN: Orders not actually placed")
@@ -713,6 +731,17 @@ async def execute_arbitrage_trade(
         logging.info(
             "✅ Simulated trade executed. Expected PnL: $%.2f",
             opportunity['expected_pnl']
+        )
+
+        trade_logger.info(
+            "SIMULATED | buy=%s @ %.4f | sell=%s @ %.4f | size=$%.2f | expected_pnl=$%.2f",
+            buy_exchange,
+            buy_price,
+            sell_exchange,
+            sell_price,
+            size,
+            opportunity['expected_pnl'],
+            extra={"exchange": f"{buy_exchange}/{sell_exchange}", "market": f"{pm_market_id}/{sx_market_id}"},
         )
 
         return result
@@ -818,6 +847,18 @@ async def execute_arbitrage_trade(
                     "Unhedged position: %s %s @ %.4f",
                     sell_exchange, sell_order_id, sell_price
                 )
+                risk_manager.handle_unhedged_leg("Buy leg failed while sell leg filled")
+                asyncio.create_task(
+                    send_critical_alert(
+                        "Unhedged position",
+                        "Buy leg провалился, продажа прошла — требуется ручная проверка",
+                        {
+                            "sell_exchange": sell_exchange,
+                            "sell_order": sell_order_id,
+                            "price": sell_price,
+                        },
+                    )
+                )
                 # Release buy balance (order didn't execute), commit sell balance (executed)
                 if buy_reserved:
                     balance_manager.release_balance(buy_exchange, size)
@@ -834,6 +875,18 @@ async def execute_arbitrage_trade(
                     "🚨 CRITICAL: Sell failed but buy succeeded! "
                     "Unhedged position: %s %s @ %.4f",
                     buy_exchange, buy_order_id, buy_price
+                )
+                risk_manager.handle_unhedged_leg("Sell leg failed while buy leg filled")
+                asyncio.create_task(
+                    send_critical_alert(
+                        "Unhedged position",
+                        "Sell leg провалился, покупка прошла — требуется ручная проверка",
+                        {
+                            "buy_exchange": buy_exchange,
+                            "buy_order": buy_order_id,
+                            "price": buy_price,
+                        },
+                    )
                 )
                 # Commit buy balance (executed), release sell balance (didn't execute)
                 if buy_reserved:
@@ -894,6 +947,17 @@ async def execute_arbitrage_trade(
             opportunity['expected_pnl']
         )
 
+        trade_logger.info(
+            "EXECUTED | buy=%s @ %.4f | sell=%s @ %.4f | size=$%.2f | expected_pnl=$%.2f",
+            buy_exchange,
+            buy_price,
+            sell_exchange,
+            sell_price,
+            size,
+            opportunity['expected_pnl'],
+            extra={"exchange": f"{buy_exchange}/{sell_exchange}", "market": f"{pm_market_id}/{sx_market_id}"},
+        )
+
         return result
 
     except TradeExecutionError as exc:
@@ -915,3 +979,16 @@ async def execute_arbitrage_trade(
         except Exception as release_exc:
             logging.error("Failed to release balances during error cleanup: %s", release_exc)
         raise
+    finally:
+        if reservation_id:
+            try:
+                risk_manager.release_trade(
+                    reservation_id,
+                    buy_exchange,
+                    sell_exchange,
+                    pm_market_id,
+                    sx_market_id,
+                    size,
+                )
+            except Exception:
+                logging.exception("Failed to release risk reservation")
