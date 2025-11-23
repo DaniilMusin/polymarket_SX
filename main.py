@@ -7,6 +7,7 @@ from core.metrics import init_metrics
 from core.processor import process_arbitrage
 from core.trader import execute_arbitrage_trade
 from connectors import polymarket, sx, kalshi  # noqa: F401
+import config
 
 
 async def main() -> None:
@@ -81,13 +82,13 @@ async def main() -> None:
                     opportunity['expected_pnl']
                 )
 
-                # Execute trade (dry run by default)
+                # Execute trade (controlled by ENABLE_REAL_TRADING in .env)
                 result = await execute_arbitrage_trade(
                     session,
                     opportunity,
                     pm_market_id,
                     sx_market_id,
-                    dry_run=True  # Set to False for real trading
+                    dry_run=not config.ENABLE_REAL_TRADING
                 )
                 logging.info("Trade execution result: %s", result['status'])
             else:
