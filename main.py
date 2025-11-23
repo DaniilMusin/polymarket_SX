@@ -6,6 +6,7 @@ from core.logging_config import setup_logging
 from core.metrics import init_metrics
 from core.processor import process_arbitrage
 from core.trader import execute_arbitrage_trade
+from core.statistics import get_statistics_collector
 from connectors import polymarket, sx, kalshi  # noqa: F401
 import config
 
@@ -16,14 +17,49 @@ async def main() -> None:
     logging.info("=" * 80)
     logging.info("🚀 Starting Polymarket-SX Arbitrage Bot")
     logging.info("=" * 80)
+    logging.info("Mode: %s", "REAL TRADING" if config.ENABLE_REAL_TRADING else "SIMULATION")
+    logging.info("=" * 80)
 
     init_metrics()
+    stats_collector = get_statistics_collector()
 
     try:
         async with ClientSession() as session:
-            # Example market ids placeholders
-            pm_market_id = "pm_example"
-            sx_market_id = "sx_example"
+            # ===============================================================================
+            # CRITICAL: Replace with REAL market IDs before running!
+            # ===============================================================================
+            # These are placeholder IDs. The bot will fail with these values.
+            #
+            # To find real market IDs, run:
+            #   python scripts/find_markets.py
+            #
+            # Then test each market individually:
+            #   python scripts/check_polymarket_connector.py <market_id>
+            #   python scripts/check_sx_connector.py <market_id>
+            #
+            # Example real IDs (verify these are current!):
+            #   Polymarket: condition_id from https://gamma-api.polymarket.com/markets
+            #   SX: market_id from https://api.sx.bet/markets
+            # ===============================================================================
+            pm_market_id = "REPLACE_WITH_REAL_POLYMARKET_MARKET_ID"
+            sx_market_id = "REPLACE_WITH_REAL_SX_MARKET_ID"
+
+            # Check if market IDs were updated
+            if "REPLACE" in pm_market_id or "REPLACE" in sx_market_id:
+                logging.error("=" * 80)
+                logging.error("❌ CRITICAL ERROR: Market IDs not configured!")
+                logging.error("=" * 80)
+                logging.error("")
+                logging.error("You must replace placeholder market IDs with real ones.")
+                logging.error("")
+                logging.error("Steps:")
+                logging.error("1. Run: python scripts/find_markets.py")
+                logging.error("2. Pick market IDs with high liquidity")
+                logging.error("3. Test: python scripts/check_polymarket_connector.py <id>")
+                logging.error("4. Update pm_market_id and sx_market_id in main.py")
+                logging.error("")
+                logging.error("=" * 80)
+                return
 
             try:
                 # Get full orderbooks with prices
@@ -83,14 +119,32 @@ async def main() -> None:
                 )
 
                 # Execute trade (controlled by ENABLE_REAL_TRADING in .env)
-                result = await execute_arbitrage_trade(
-                    session,
-                    opportunity,
-                    pm_market_id,
-                    sx_market_id,
-                    dry_run=not config.ENABLE_REAL_TRADING
-                )
-                logging.info("Trade execution result: %s", result['status'])
+                try:
+                    result = await execute_arbitrage_trade(
+                        session,
+                        opportunity,
+                        pm_market_id,
+                        sx_market_id,
+                        dry_run=not config.ENABLE_REAL_TRADING
+                    )
+                    logging.info("Trade execution result: %s", result['status'])
+
+                    # Log statistics
+                    executed = result['status'] not in ['simulated', 'failed']
+                    actual_pnl = result.get('actual_pnl')  # Will be None for simulated trades
+                    stats_collector.log_opportunity(
+                        opportunity,
+                        executed=executed,
+                        actual_pnl=actual_pnl
+                    )
+
+                except Exception as exc:
+                    logging.error("Trade execution failed: %s", exc)
+                    stats_collector.log_opportunity(
+                        opportunity,
+                        executed=False,
+                        execution_error=str(exc)
+                    )
             else:
                 logging.info("No arbitrage opportunity found")
 
