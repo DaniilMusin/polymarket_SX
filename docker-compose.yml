@@ -1,0 +1,12 @@
+version: "3.9"
+services:
+  bot:
+    build: .
+    container_name: polymarket-bot
+    restart: unless-stopped
+    environment:
+      - LOG_DIR=/app/logs
+    volumes:
+      - ./logs:/app/logs
+      - ./config.py:/app/config.py:ro
+    command: ["python", "main.py"]

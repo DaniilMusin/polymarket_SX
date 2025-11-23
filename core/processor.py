@@ -7,6 +7,7 @@ from config import (
 )
 from core.metrics import g_edge, g_trades
 from core.exchange_balances import get_balance_manager, InsufficientBalanceError
+from core.opportunity_recorder import record_opportunity
 
 
 def calculate_total_depth(orderbook: Dict[str, List[Dict]]) -> float:
@@ -117,7 +118,9 @@ def calculate_spread_percent(orderbook: dict) -> float:
 def find_arbitrage_opportunity(
     pm_book: dict,
     sx_book: dict,
-    min_profit_bps: float = None  # Minimum profit in basis points (from config if None)
+    min_profit_bps: float = None,  # Minimum profit in basis points (from config if None)
+    pm_market_id: str | None = None,
+    sx_market_id: str | None = None,
 ) -> Optional[Dict]:
     """
     Find arbitrage opportunity between two orderbooks.
@@ -261,6 +264,21 @@ def find_arbitrage_opportunity(
 
     g_edge.inc()  # Increment arbitrage signal counter
 
+    record_opportunity(
+        buy_exchange,
+        sell_exchange,
+        buy_price,
+        sell_price,
+        position_size,
+        profit * position_size,
+        profit_bps,
+        profit * 100,
+        buy_market=pm_market_id if buy_exchange == "polymarket" else sx_market_id,
+        sell_market=sx_market_id if sell_exchange == "sx" else pm_market_id,
+        buy_depth=pm_book['ask_depth'] if buy_exchange == "polymarket" else sx_book['ask_depth'],
+        sell_depth=sx_book['bid_depth'] if sell_exchange == "sx" else pm_book['bid_depth'],
+    )
+
     logging.info(
         "🎯 ARBITRAGE FOUND: Buy %s @ %.4f, Sell %s @ %.4f | "
         "Profit: %.2f bps (%.4f%%) | Size: $%.2f | Expected PnL: $%.2f",
@@ -325,6 +343,8 @@ async def process_depth(pm_depth: float, sx_depth: float) -> float:
 async def process_arbitrage(
     pm_book: dict,
     sx_book: dict,
+    pm_market_id: str | None = None,
+    sx_market_id: str | None = None,
     execute: bool = False
 ) -> Optional[Dict]:
     """
@@ -333,12 +353,16 @@ async def process_arbitrage(
     Args:
         pm_book: Polymarket orderbook
         sx_book: SX orderbook
+        pm_market_id: Polymarket market identifier
+        sx_market_id: SX market identifier
         execute: If True, execute the trade (requires order placement functions)
 
     Returns:
         Arbitrage opportunity dict or None
     """
-    opportunity = find_arbitrage_opportunity(pm_book, sx_book)
+    opportunity = find_arbitrage_opportunity(
+        pm_book, sx_book, pm_market_id=pm_market_id, sx_market_id=sx_market_id
+    )
 
     if not opportunity:
         return None
