@@ -97,9 +97,15 @@ async def find_sx_markets(session: ClientSession, limit: int = 10) -> List[Dict]
     """
     Найти популярные рынки на SX.
 
-    Note: SX API может требовать другой подход.
+    ⚠️ WARNING: SX market discovery is LIMITED/EXPERIMENTAL.
+    The API parsing below is a placeholder and may not work correctly.
+
+    RECOMMENDED: Find SX market IDs manually at https://sx.bet
+    Then verify them with: python scripts/check_sx_connector.py <market_id>
     """
     print(f"\n{Colors.BOLD}Searching SX markets...{Colors.END}")
+    print(f"{Colors.YELLOW}⚠ WARNING: SX integration is experimental{Colors.END}")
+    print(f"{Colors.YELLOW}  Recommended to find market IDs manually at https://sx.bet{Colors.END}")
 
     try:
         # SX API - нужно проверить актуальный endpoint
