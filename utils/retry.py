@@ -52,7 +52,7 @@ def retry(
 
                     # Calculate delay with exponential backoff
                     if exponential_backoff:
-                        current_delay = min(delay * (2 ** i), max_delay)
+                        current_delay = min(delay * (2**i), max_delay)
                     else:
                         current_delay = delay
 

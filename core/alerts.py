@@ -13,7 +13,9 @@ from logging.handlers import RotatingFileHandler
 
 # Configure alert log file path
 ALERT_LOG_PATH = os.getenv("ALERT_LOG_PATH", "logs/alerts.log")
-ALERT_LOG_MAX_BYTES = int(os.getenv("ALERT_LOG_MAX_BYTES", str(10 * 1024 * 1024)))  # 10MB
+ALERT_LOG_MAX_BYTES = int(
+    os.getenv("ALERT_LOG_MAX_BYTES", str(10 * 1024 * 1024))
+)  # 10MB
 ALERT_LOG_BACKUP_COUNT = int(os.getenv("ALERT_LOG_BACKUP_COUNT", "5"))
 
 
@@ -45,13 +47,13 @@ class CriticalAlertHandler(logging.Handler):
             self.file_handler = RotatingFileHandler(
                 ALERT_LOG_PATH,
                 maxBytes=ALERT_LOG_MAX_BYTES,
-                backupCount=ALERT_LOG_BACKUP_COUNT
+                backupCount=ALERT_LOG_BACKUP_COUNT,
             )
 
             # Format: timestamp | level | message
             formatter = logging.Formatter(
-                '%(asctime)s | %(levelname)-8s | %(message)s',
-                datefmt='%Y-%m-%d %H:%M:%S'
+                "%(asctime)s | %(levelname)-8s | %(message)s",
+                datefmt="%Y-%m-%d %H:%M:%S",
             )
             self.file_handler.setFormatter(formatter)
 

@@ -18,9 +18,11 @@ class AlertManager:
 
     def __init__(self):
         """Initialize alert manager."""
-        self.telegram_token = os.getenv('TELEGRAM_BOT_TOKEN') or os.getenv('TELEGRAM_TOKEN')
-        self.telegram_chat_id = os.getenv('TELEGRAM_CHAT_ID')
-        self.discord_webhook = os.getenv('DISCORD_WEBHOOK_URL')
+        self.telegram_token = os.getenv("TELEGRAM_BOT_TOKEN") or os.getenv(
+            "TELEGRAM_TOKEN"
+        )
+        self.telegram_chat_id = os.getenv("TELEGRAM_CHAT_ID")
+        self.discord_webhook = os.getenv("DISCORD_WEBHOOK_URL")
 
         self.telegram_enabled = bool(self.telegram_token and self.telegram_chat_id)
         self.discord_enabled = bool(self.discord_webhook)
@@ -32,10 +34,7 @@ class AlertManager:
             )
 
     async def send_critical_alert(
-        self,
-        title: str,
-        message: str,
-        details: Optional[dict] = None
+        self, title: str, message: str, details: Optional[dict] = None
     ):
         """
         Send critical alert to all configured channels.
@@ -68,10 +67,7 @@ class AlertManager:
             logging.error(full_message)
 
     async def send_warning_alert(
-        self,
-        title: str,
-        message: str,
-        details: Optional[dict] = None
+        self, title: str, message: str, details: Optional[dict] = None
     ):
         """Send warning alert."""
         full_message = f"⚠️  **WARNING: {title}**\n\n{message}"
@@ -91,10 +87,7 @@ class AlertManager:
             await asyncio.gather(*tasks, return_exceptions=True)
 
     async def send_info_alert(
-        self,
-        title: str,
-        message: str,
-        details: Optional[dict] = None
+        self, title: str, message: str, details: Optional[dict] = None
     ):
         """Send info alert."""
         full_message = f"ℹ️  **{title}**\n\n{message}"
@@ -118,9 +111,9 @@ class AlertManager:
         try:
             url = f"https://api.telegram.org/bot{self.telegram_token}/sendMessage"
             payload = {
-                'chat_id': self.telegram_chat_id,
-                'text': message,
-                'parse_mode': 'Markdown',
+                "chat_id": self.telegram_chat_id,
+                "text": message,
+                "parse_mode": "Markdown",
             }
 
             async with aiohttp.ClientSession() as session:
@@ -140,24 +133,24 @@ class AlertManager:
         try:
             # Color based on level
             colors = {
-                'CRITICAL': 0xFF0000,  # Red
-                'WARNING': 0xFFA500,   # Orange
-                'INFO': 0x0000FF,      # Blue
+                "CRITICAL": 0xFF0000,  # Red
+                "WARNING": 0xFFA500,  # Orange
+                "INFO": 0x0000FF,  # Blue
             }
 
             payload = {
-                'embeds': [{
-                    'description': message,
-                    'color': colors.get(level, 0x0000FF),
-                }]
+                "embeds": [
+                    {
+                        "description": message,
+                        "color": colors.get(level, 0x0000FF),
+                    }
+                ]
             }
 
             async with aiohttp.ClientSession() as session:
                 timeout = aiohttp.ClientTimeout(total=10.0)
                 async with session.post(
-                    self.discord_webhook,
-                    json=payload,
-                    timeout=timeout
+                    self.discord_webhook, json=payload, timeout=timeout
                 ) as resp:
                     if resp.status in [200, 204]:
                         logging.info("✅ Discord alert sent")

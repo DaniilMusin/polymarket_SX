@@ -35,7 +35,9 @@ async def orderbook_depth(
     """
     try:
         # Use configurable timeout to handle slow networks and busy exchanges
-        timeout = aiohttp.ClientTimeout(total=API_TIMEOUT_TOTAL, connect=API_TIMEOUT_CONNECT)
+        timeout = aiohttp.ClientTimeout(
+            total=API_TIMEOUT_TOTAL, connect=API_TIMEOUT_CONNECT
+        )
         async with session.get(
             f"{API_REST}/orderbook/{market_id}", timeout=timeout
         ) as r:
@@ -76,13 +78,13 @@ async def orderbook_depth(
         if not bids_data or not asks_data:
             logging.warning("SX returned empty bids or asks list")
             return {
-                'best_bid': 0.0,
-                'best_ask': 0.0,
-                'bid_depth': 0.0,
-                'ask_depth': 0.0,
-                'total_depth': 0.0,
-                'bids': [],
-                'asks': [],
+                "best_bid": 0.0,
+                "best_ask": 0.0,
+                "bid_depth": 0.0,
+                "ask_depth": 0.0,
+                "total_depth": 0.0,
+                "bids": [],
+                "asks": [],
             }
 
         # Extract prices and quantities
@@ -97,13 +99,13 @@ async def orderbook_depth(
         ask_depth = sum(ask_quantities)
 
         return {
-            'best_bid': best_bid_price,
-            'best_ask': best_ask_price,
-            'bid_depth': bid_depth,
-            'ask_depth': ask_depth,
-            'total_depth': bid_depth + ask_depth,
-            'bids': bids_data,
-            'asks': asks_data,
+            "best_bid": best_bid_price,
+            "best_ask": best_ask_price,
+            "bid_depth": bid_depth,
+            "ask_depth": ask_depth,
+            "total_depth": bid_depth + ask_depth,
+            "bids": bids_data,
+            "asks": asks_data,
         }
     except (KeyError, ValueError, TypeError) as exc:
         logging.error("SX bad response format: %s", exc, exc_info=True)

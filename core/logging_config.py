@@ -17,7 +17,9 @@ ALERT_LOG_FILE = Path(LOG_DIR) / "alerts.log"
 
 
 class _Formatter(logging.Formatter):
-    def format(self, record: logging.LogRecord) -> str:  # pragma: no cover - thin wrapper
+    def format(
+        self, record: logging.LogRecord
+    ) -> str:  # pragma: no cover - thin wrapper
         if not hasattr(record, "exchange"):
             record.exchange = "-"
         if not hasattr(record, "market"):
@@ -27,15 +29,22 @@ class _Formatter(logging.Formatter):
 
 def _build_handler(path: Path, level: int) -> RotatingFileHandler:
     path.parent.mkdir(parents=True, exist_ok=True)
-    handler = RotatingFileHandler(path, maxBytes=LOG_MAX_BYTES, backupCount=LOG_BACKUP_COUNT)
+    handler = RotatingFileHandler(
+        path, maxBytes=LOG_MAX_BYTES, backupCount=LOG_BACKUP_COUNT
+    )
     handler.setLevel(level)
     handler.setFormatter(
-        _Formatter("%(asctime)s | %(levelname)-8s | %(exchange)s | %(market)s | %(message)s", "%Y-%m-%d %H:%M:%S")
+        _Formatter(
+            "%(asctime)s | %(levelname)-8s | %(exchange)s | %(market)s | %(message)s",
+            "%Y-%m-%d %H:%M:%S",
+        )
     )
     return handler
 
 
-def setup_logging(level: int = logging.INFO, logger: Optional[logging.Logger] = None) -> None:
+def setup_logging(
+    level: int = logging.INFO, logger: Optional[logging.Logger] = None
+) -> None:
     """Configure root logging with rotation and dedicated trade/error streams."""
 
     target_logger = logger or logging.getLogger()
@@ -47,7 +56,9 @@ def setup_logging(level: int = logging.INFO, logger: Optional[logging.Logger] = 
 
     console_handler = logging.StreamHandler()
     console_handler.setLevel(level)
-    console_handler.setFormatter(_Formatter("%(asctime)s | %(levelname)-8s | %(message)s", "%Y-%m-%d %H:%M:%S"))
+    console_handler.setFormatter(
+        _Formatter("%(asctime)s | %(levelname)-8s | %(message)s", "%Y-%m-%d %H:%M:%S")
+    )
 
     bot_handler = _build_handler(BOT_LOG_FILE, level)
     error_handler = _build_handler(ERROR_LOG_FILE, logging.WARNING)

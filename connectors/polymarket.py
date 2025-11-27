@@ -35,7 +35,9 @@ async def orderbook_depth(
     """
     try:
         # Use configurable timeout to handle slow networks and busy exchanges
-        timeout = aiohttp.ClientTimeout(total=API_TIMEOUT_TOTAL, connect=API_TIMEOUT_CONNECT)
+        timeout = aiohttp.ClientTimeout(
+            total=API_TIMEOUT_TOTAL, connect=API_TIMEOUT_CONNECT
+        )
         async with session.get(
             f"{API_CLOB}/orderbook/{market_id}", timeout=timeout
         ) as r:
@@ -45,8 +47,12 @@ async def orderbook_depth(
             try:
                 data: Any = await r.json()
             except aiohttp.ContentTypeError as exc:
-                logging.error("Polymarket API returned invalid JSON: %s", exc, exc_info=True)
-                raise OrderbookError(f"invalid response format (not JSON): {exc}") from exc
+                logging.error(
+                    "Polymarket API returned invalid JSON: %s", exc, exc_info=True
+                )
+                raise OrderbookError(
+                    f"invalid response format (not JSON): {exc}"
+                ) from exc
     except asyncio.TimeoutError as exc:
         logging.error("Polymarket request timed out: %s", exc, exc_info=True)
         raise OrderbookError(f"request timeout: {exc}") from exc
@@ -71,7 +77,9 @@ async def orderbook_depth(
 
         # Check for "Yes" key
         if "Yes" not in bids_data or "Yes" not in asks_data:
-            raise OrderbookError("bad response format: missing bids['Yes'] or asks['Yes']")
+            raise OrderbookError(
+                "bad response format: missing bids['Yes'] or asks['Yes']"
+            )
 
         bids_yes = bids_data["Yes"]
         asks_yes = asks_data["Yes"]
@@ -89,13 +97,13 @@ async def orderbook_depth(
         if not bids_yes or not asks_yes:
             logging.warning("Polymarket returned empty bids or asks list")
             return {
-                'best_bid': 0.0,
-                'best_ask': 0.0,
-                'bid_depth': 0.0,
-                'ask_depth': 0.0,
-                'total_depth': 0.0,
-                'bids': [],
-                'asks': [],
+                "best_bid": 0.0,
+                "best_ask": 0.0,
+                "bid_depth": 0.0,
+                "ask_depth": 0.0,
+                "total_depth": 0.0,
+                "bids": [],
+                "asks": [],
             }
 
         # Extract prices and quantities
@@ -110,13 +118,13 @@ async def orderbook_depth(
         ask_depth = sum(ask_quantities)
 
         return {
-            'best_bid': best_bid_price,
-            'best_ask': best_ask_price,
-            'bid_depth': bid_depth,
-            'ask_depth': ask_depth,
-            'total_depth': bid_depth + ask_depth,
-            'bids': bids_yes,
-            'asks': asks_yes,
+            "best_bid": best_bid_price,
+            "best_ask": best_ask_price,
+            "bid_depth": bid_depth,
+            "ask_depth": ask_depth,
+            "total_depth": bid_depth + ask_depth,
+            "bids": bids_yes,
+            "asks": asks_yes,
         }
     except (KeyError, ValueError, TypeError) as exc:
         logging.error("Polymarket bad response format: %s", exc, exc_info=True)

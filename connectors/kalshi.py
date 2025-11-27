@@ -35,7 +35,9 @@ async def orderbook_depth(
     """
     try:
         # Use configurable timeout to handle slow networks and busy exchanges
-        timeout = aiohttp.ClientTimeout(total=API_TIMEOUT_TOTAL, connect=API_TIMEOUT_CONNECT)
+        timeout = aiohttp.ClientTimeout(
+            total=API_TIMEOUT_TOTAL, connect=API_TIMEOUT_CONNECT
+        )
         params = {"depth": depth} if depth > 0 else {}
         async with session.get(
             f"{API_BASE}/markets/{market_id}/orderbook",
@@ -48,7 +50,9 @@ async def orderbook_depth(
             try:
                 data: Any = await r.json()
             except aiohttp.ContentTypeError as exc:
-                logging.error("Kalshi API returned invalid JSON: %s", exc, exc_info=True)
+                logging.error(
+                    "Kalshi API returned invalid JSON: %s", exc, exc_info=True
+                )
                 raise KalshiError(f"invalid response format (not JSON): {exc}") from exc
     except asyncio.TimeoutError as exc:
         logging.error("Kalshi request timed out: %s", exc, exc_info=True)
@@ -71,7 +75,9 @@ async def orderbook_depth(
 
         # Check for yes/no keys
         if "yes" not in orderbook or "no" not in orderbook:
-            raise KalshiError("bad response format: missing orderbook['yes'] or orderbook['no']")
+            raise KalshiError(
+                "bad response format: missing orderbook['yes'] or orderbook['no']"
+            )
 
         yes_bids_raw = orderbook["yes"]
         no_bids_raw = orderbook["no"]
@@ -88,13 +94,13 @@ async def orderbook_depth(
         if not yes_bids or not no_bids:
             logging.warning("Kalshi returned empty yes or no bids list")
             return {
-                'best_bid': 0.0,
-                'best_ask': 0.0,
-                'bid_depth': 0.0,
-                'ask_depth': 0.0,
-                'total_depth': 0.0,
-                'bids': [],
-                'asks': [],
+                "best_bid": 0.0,
+                "best_ask": 0.0,
+                "bid_depth": 0.0,
+                "ask_depth": 0.0,
+                "total_depth": 0.0,
+                "bids": [],
+                "asks": [],
             }
 
         # Kalshi prices are in cents (0-100), convert to probability (0-1)
@@ -115,13 +121,13 @@ async def orderbook_depth(
         ask_depth = sum(ask_quantities)
 
         return {
-            'best_bid': best_bid_price,
-            'best_ask': best_ask_price,
-            'bid_depth': bid_depth,
-            'ask_depth': ask_depth,
-            'total_depth': bid_depth + ask_depth,
-            'bids': yes_bids,
-            'asks': no_bids,
+            "best_bid": best_bid_price,
+            "best_ask": best_ask_price,
+            "bid_depth": bid_depth,
+            "ask_depth": ask_depth,
+            "total_depth": bid_depth + ask_depth,
+            "bids": yes_bids,
+            "asks": no_bids,
         }
     except (KeyError, ValueError, TypeError, IndexError) as exc:
         logging.error("Kalshi bad response format: %s", exc, exc_info=True)

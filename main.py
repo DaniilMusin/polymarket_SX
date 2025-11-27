@@ -37,7 +37,9 @@ async def main() -> None:
     logging.info("=" * 80)
     logging.info("🚀 Starting Polymarket-SX Arbitrage Bot")
     logging.info("=" * 80)
-    logging.info("Mode: %s", "REAL TRADING" if config.ENABLE_REAL_TRADING else "SIMULATION")
+    logging.info(
+        "Mode: %s", "REAL TRADING" if config.ENABLE_REAL_TRADING else "SIMULATION"
+    )
     logging.info("=" * 80)
 
     # ==================================================================================
@@ -52,7 +54,9 @@ async def main() -> None:
         logging.warning("=" * 80)
         logging.warning("")
         logging.warning("This will execute REAL orders on exchanges with REAL money.")
-        logging.warning("Make sure you understand the risks and have tested in simulation first.")
+        logging.warning(
+            "Make sure you understand the risks and have tested in simulation first."
+        )
         logging.warning("")
         logging.warning("=" * 80)
 
@@ -72,7 +76,9 @@ async def main() -> None:
             logging.error(f"You entered: '{answer}'")
             logging.error("Required: 'YES' (all capitals)")
             logging.error("")
-            logging.error("To run in simulation mode, set ENABLE_REAL_TRADING=false in .env")
+            logging.error(
+                "To run in simulation mode, set ENABLE_REAL_TRADING=false in .env"
+            )
             logging.error("=" * 80)
             return
 
@@ -115,7 +121,9 @@ async def main() -> None:
                 logging.error("Steps:")
                 logging.error("1. Run: python scripts/find_markets.py")
                 logging.error("2. Pick market IDs with high liquidity")
-                logging.error("3. Test: python scripts/check_polymarket_connector.py <id>")
+                logging.error(
+                    "3. Test: python scripts/check_polymarket_connector.py <id>"
+                )
                 logging.error("4. Update pm_market_id and sx_market_id in main.py")
                 logging.error("")
                 logging.error("=" * 80)
@@ -124,6 +132,7 @@ async def main() -> None:
             try:
                 # Get full orderbooks with prices
                 from core.processor import validate_orderbook
+
                 pm_book = await polymarket.orderbook_depth(session, pm_market_id)
                 # Validate orderbook format before accessing keys
                 if not validate_orderbook(pm_book):
@@ -131,9 +140,9 @@ async def main() -> None:
                     return
                 logging.info(
                     "Polymarket: bid=%.4f ask=%.4f depth=%.2f",
-                    pm_book['best_bid'],
-                    pm_book['best_ask'],
-                    pm_book['total_depth']
+                    pm_book["best_bid"],
+                    pm_book["best_ask"],
+                    pm_book["total_depth"],
                 )
             except Exception as exc:
                 logging.error("Failed to get Polymarket orderbook: %s", exc)
@@ -147,9 +156,9 @@ async def main() -> None:
                     return
                 logging.info(
                     "SX: bid=%.4f ask=%.4f depth=%.2f",
-                    sx_book['best_bid'],
-                    sx_book['best_ask'],
-                    sx_book['total_depth']
+                    sx_book["best_bid"],
+                    sx_book["best_ask"],
+                    sx_book["total_depth"],
                 )
             except Exception as exc:
                 logging.error("Failed to get SX orderbook: %s", exc)
@@ -164,18 +173,18 @@ async def main() -> None:
                 logging.info("🎯 Arbitrage opportunity found!")
                 logging.info(
                     "   Buy on %s @ %.4f",
-                    opportunity['buy_exchange'],
-                    opportunity['buy_price']
+                    opportunity["buy_exchange"],
+                    opportunity["buy_price"],
                 )
                 logging.info(
                     "   Sell on %s @ %.4f",
-                    opportunity['sell_exchange'],
-                    opportunity['sell_price']
+                    opportunity["sell_exchange"],
+                    opportunity["sell_price"],
                 )
                 logging.info(
                     "   Profit: %.2f bps ($%.2f)",
-                    opportunity['profit_bps'],
-                    opportunity['expected_pnl']
+                    opportunity["profit_bps"],
+                    opportunity["expected_pnl"],
                 )
 
                 # Execute trade (controlled by ENABLE_REAL_TRADING in .env)
@@ -185,25 +194,23 @@ async def main() -> None:
                         opportunity,
                         pm_market_id,
                         sx_market_id,
-                        dry_run=not config.ENABLE_REAL_TRADING
+                        dry_run=not config.ENABLE_REAL_TRADING,
                     )
-                    logging.info("Trade execution result: %s", result['status'])
+                    logging.info("Trade execution result: %s", result["status"])
 
                     # Log statistics
-                    executed = result['status'] not in ['simulated', 'failed']
-                    actual_pnl = result.get('actual_pnl')  # Will be None for simulated trades
+                    executed = result["status"] not in ["simulated", "failed"]
+                    actual_pnl = result.get(
+                        "actual_pnl"
+                    )  # Will be None for simulated trades
                     stats_collector.log_opportunity(
-                        opportunity,
-                        executed=executed,
-                        actual_pnl=actual_pnl
+                        opportunity, executed=executed, actual_pnl=actual_pnl
                     )
 
                 except Exception as exc:
                     logging.error("Trade execution failed: %s", exc)
                     stats_collector.log_opportunity(
-                        opportunity,
-                        executed=False,
-                        execution_error=str(exc)
+                        opportunity, executed=False, execution_error=str(exc)
                     )
             else:
                 logging.info("No arbitrage opportunity found")

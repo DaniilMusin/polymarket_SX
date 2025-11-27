@@ -30,8 +30,10 @@ class TradeExecutionError(Exception):
 
 
 def check_ioc_order_filled(
-    response: Dict, exchange: str, order_type: str = 'IOC',
-    expected_size: Optional[float] = None
+    response: Dict,
+    exchange: str,
+    order_type: str = "IOC",
+    expected_size: Optional[float] = None,
 ) -> bool:
     """
     Check if IOC order was successfully filled.
@@ -53,27 +55,29 @@ def check_ioc_order_filled(
         TradeExecutionError: If IOC order was not filled or partially filled
     """
     # Only check for IOC orders
-    if order_type != 'IOC':
+    if order_type != "IOC":
         return True
 
     # Extract status field based on exchange
     status = None
     filled_amount = None
 
-    if exchange == 'polymarket':
+    if exchange == "polymarket":
         # Polymarket: 'status' field with values: LIVE, MATCHED, FILLED, CANCELLED
-        status = response.get('status')
+        status = response.get("status")
         # Try to get filled amount if available
-        filled_amount = response.get('size_matched') or response.get('filled_amount')
-    elif exchange == 'sx':
+        filled_amount = response.get("size_matched") or response.get("filled_amount")
+    elif exchange == "sx":
         # SX: 'state' field with values: PENDING, FILLED, CANCELLED, EXPIRED
-        status = response.get('state')
-        filled_amount = response.get('filled_size') or response.get('filled_amount')
-    elif exchange == 'kalshi':
+        status = response.get("state")
+        filled_amount = response.get("filled_size") or response.get("filled_amount")
+    elif exchange == "kalshi":
         # Kalshi: order.status with values: resting, filled, cancelled
-        order_data = response.get('order', {})
-        status = order_data.get('status')
-        filled_amount = order_data.get('filled_count') or order_data.get('filled_amount')
+        order_data = response.get("order", {})
+        status = order_data.get("status")
+        filled_amount = order_data.get("filled_count") or order_data.get(
+            "filled_amount"
+        )
 
     # If no status field found, FAIL SAFE - raise error instead of assuming success
     if not status:
@@ -84,7 +88,7 @@ def check_ioc_order_filled(
         )
 
     # For IOC: only FILLED/MATCHED statuses are acceptable
-    filled_statuses = ['FILLED', 'filled', 'MATCHED', 'matched']
+    filled_statuses = ["FILLED", "filled", "MATCHED", "matched"]
     if status not in filled_statuses:
         raise TradeExecutionError(
             f"{exchange} IOC order not filled! Status: {status}. "
@@ -105,7 +109,10 @@ def check_ioc_order_filled(
             )
         logging.info(
             "%s: IOC order fully filled (status: %s, filled: %.4f/%.4f)",
-            exchange, status, filled_float, expected_size
+            exchange,
+            status,
+            filled_float,
+            expected_size,
         )
     else:
         logging.info("%s: IOC order confirmed filled (status: %s)", exchange, status)
@@ -122,8 +129,8 @@ async def place_order_polymarket(
     size: float,
     wallet: Optional[Wallet] = None,
     api_key: Optional[str] = None,
-    order_type: str = 'IOC',  # 'IOC' (Immediate Or Cancel) or 'LIMIT'
-    _skip_balance_check: bool = False  # Internal: skip balance check if already reserved
+    order_type: str = "IOC",  # 'IOC' (Immediate Or Cancel) or 'LIMIT'
+    _skip_balance_check: bool = False,  # Internal: skip balance check if already reserved
 ) -> Dict:
     """
     Place an order on Polymarket CLOB with EIP-712 signing.
@@ -150,25 +157,23 @@ async def place_order_polymarket(
         TradeExecutionError: If order placement fails
     """
     if not wallet:
-        logging.warning(
-            "Polymarket wallet not provided. Order simulation only."
-        )
+        logging.warning("Polymarket wallet not provided. Order simulation only.")
         return {
-            'status': 'simulated',
-            'exchange': 'polymarket',
-            'market_id': market_id,
-            'side': side,
-            'price': price,
-            'size': size,
-            'order_id': 'SIMULATED',
+            "status": "simulated",
+            "exchange": "polymarket",
+            "market_id": market_id,
+            "side": side,
+            "price": price,
+            "size": size,
+            "order_id": "SIMULATED",
         }
 
     try:
         # Check if sufficient balance is available (only if not already reserved)
         if not _skip_balance_check:
             balance_manager = get_balance_manager()
-            if not balance_manager.check_balance('polymarket', size):
-                available = balance_manager.get_balance('polymarket')
+            if not balance_manager.check_balance("polymarket", size):
+                available = balance_manager.get_balance("polymarket")
                 raise InsufficientBalanceError(
                     f"Insufficient balance on Polymarket: "
                     f"required ${size:.2f}, available ${available:.2f}"
@@ -194,7 +199,7 @@ async def place_order_polymarket(
         # For BUY order: maker provides USDC, taker provides tokens
         # For SELL order: maker provides tokens, taker provides USDC
         # Use Decimal for precise division to avoid floating-point precision loss
-        if side.lower() == 'buy':
+        if side.lower() == "buy":
             maker_amount = size_wei  # USDC
             # Tokens (safe: price > 0 validated above)
             taker_amount = int(Decimal(str(size_wei)) / Decimal(str(price)))
@@ -211,7 +216,7 @@ async def place_order_polymarket(
         nonce = int(time.time() * 1000000) + random.randint(0, 10000000)
 
         # Set expiration based on order type
-        if order_type == 'IOC':
+        if order_type == "IOC":
             # IOC orders expire in 5 seconds (immediate execution)
             expiration = int(time.time()) + 5
         else:
@@ -231,33 +236,39 @@ async def place_order_polymarket(
 
         # Prepare order for API
         order_payload = {
-            'tokenID': token_id,
-            'price': str(price),
-            'size': str(size),
-            'side': side.upper(),
-            'maker': wallet.address,
-            'signature': signature,
-            'nonce': nonce,
-            'expiration': expiration,
-            'postOnly': False,  # Allow taking liquidity (taker order)
+            "tokenID": token_id,
+            "price": str(price),
+            "size": str(size),
+            "side": side.upper(),
+            "maker": wallet.address,
+            "signature": signature,
+            "nonce": nonce,
+            "expiration": expiration,
+            "postOnly": False,  # Allow taking liquidity (taker order)
         }
 
         # Log order type for monitoring
         logging.info(
             "Placing %s %s order on Polymarket: %s @ %.4f, size: %.2f",
-            order_type, side.upper(), token_id[:8], price, size
+            order_type,
+            side.upper(),
+            token_id[:8],
+            price,
+            size,
         )
 
         # Post order to Polymarket CLOB API
         clob_url = "https://clob.polymarket.com/orders"
         headers = {
-            'Content-Type': 'application/json',
+            "Content-Type": "application/json",
         }
         if api_key:
-            headers['Authorization'] = f'Bearer {api_key}'
+            headers["Authorization"] = f"Bearer {api_key}"
 
         # Use configurable timeout to handle slow networks and busy exchanges
-        timeout = aiohttp.ClientTimeout(total=API_TIMEOUT_TOTAL, connect=API_TIMEOUT_CONNECT)
+        timeout = aiohttp.ClientTimeout(
+            total=API_TIMEOUT_TOTAL, connect=API_TIMEOUT_CONNECT
+        )
         async with session.post(
             clob_url, json=order_payload, headers=headers, timeout=timeout
         ) as resp:
@@ -265,10 +276,12 @@ async def place_order_polymarket(
                 result = await resp.json()
 
                 # Validate API response
-                if 'error' in result:
-                    raise TradeExecutionError(f"Polymarket API error: {result['error']}")
+                if "error" in result:
+                    raise TradeExecutionError(
+                        f"Polymarket API error: {result['error']}"
+                    )
 
-                order_id = result.get('orderID')
+                order_id = result.get("orderID")
                 if not order_id:
                     raise TradeExecutionError(
                         f"No orderID in response. Response: {result}"
@@ -278,22 +291,26 @@ async def place_order_polymarket(
 
                 # Check if IOC order was actually filled (not just accepted)
                 # Pass size to check for partial fills
-                check_ioc_order_filled(result, 'polymarket', order_type, expected_size=size)
+                check_ioc_order_filled(
+                    result, "polymarket", order_type, expected_size=size
+                )
 
                 return {
-                    'status': 'success',
-                    'exchange': 'polymarket',
-                    'order_id': order_id,
-                    'market_id': market_id,
-                    'side': side,
-                    'price': price,
-                    'size': size,
-                    'response': result,
+                    "status": "success",
+                    "exchange": "polymarket",
+                    "order_id": order_id,
+                    "market_id": market_id,
+                    "side": side,
+                    "price": price,
+                    "size": size,
+                    "response": result,
                 }
             else:
                 error_text = await resp.text()
                 logging.error("Polymarket order failed: %s", error_text)
-                raise TradeExecutionError(f"Polymarket API error: {resp.status} - {error_text}")
+                raise TradeExecutionError(
+                    f"Polymarket API error: {resp.status} - {error_text}"
+                )
 
     except WalletError as exc:
         raise TradeExecutionError(f"Wallet error: {exc}") from exc
@@ -310,8 +327,8 @@ async def place_order_sx(
     size: float,
     wallet: Optional[Wallet] = None,
     api_key: Optional[str] = None,
-    order_type: str = 'IOC',  # 'IOC' for immediate execution or 'LIMIT'
-    _skip_balance_check: bool = False  # Internal: skip balance check if already reserved
+    order_type: str = "IOC",  # 'IOC' for immediate execution or 'LIMIT'
+    _skip_balance_check: bool = False,  # Internal: skip balance check if already reserved
 ) -> Dict:
     """
     Place an order on SX with wallet signing.
@@ -336,25 +353,23 @@ async def place_order_sx(
         TradeExecutionError: If order placement fails
     """
     if not wallet:
-        logging.warning(
-            "SX wallet not provided. Order simulation only."
-        )
+        logging.warning("SX wallet not provided. Order simulation only.")
         return {
-            'status': 'simulated',
-            'exchange': 'sx',
-            'market_id': market_id,
-            'side': side,
-            'price': price,
-            'size': size,
-            'order_id': 'SIMULATED',
+            "status": "simulated",
+            "exchange": "sx",
+            "market_id": market_id,
+            "side": side,
+            "price": price,
+            "size": size,
+            "order_id": "SIMULATED",
         }
 
     try:
         # Check if sufficient balance is available (only if not already reserved)
         if not _skip_balance_check:
             balance_manager = get_balance_manager()
-            if not balance_manager.check_balance('sx', size):
-                available = balance_manager.get_balance('sx')
+            if not balance_manager.check_balance("sx", size):
+                available = balance_manager.get_balance("sx")
                 raise InsufficientBalanceError(
                     f"Insufficient balance on SX: "
                     f"required ${size:.2f}, available ${available:.2f}"
@@ -364,27 +379,32 @@ async def place_order_sx(
         # In production, you'd use web3.py to interact with contracts
 
         # Configure order based on type
-        if order_type == 'IOC':
+        if order_type == "IOC":
             fill_or_kill = True  # Execute immediately or cancel
-            post_only = False    # Allow taking liquidity
+            post_only = False  # Allow taking liquidity
         else:
             fill_or_kill = False  # Allow partial fills over time
-            post_only = True      # Only add liquidity (maker)
+            post_only = True  # Only add liquidity (maker)
 
         order_payload = {
-            'marketHash': market_id,
-            'maker': wallet.address,
-            'price': str(price),
-            'amount': str(size),
-            'isBuy': side.lower() == 'buy',
-            'fillOrKill': fill_or_kill,
-            'postOnly': post_only,
+            "marketHash": market_id,
+            "maker": wallet.address,
+            "price": str(price),
+            "amount": str(size),
+            "isBuy": side.lower() == "buy",
+            "fillOrKill": fill_or_kill,
+            "postOnly": post_only,
         }
 
         # Log order type for monitoring
         logging.info(
             "Placing %s %s order on SX: %s @ %.4f, size: %.2f (fillOrKill=%s)",
-            order_type, side.upper(), market_id[:16], price, size, fill_or_kill
+            order_type,
+            side.upper(),
+            market_id[:16],
+            price,
+            size,
+            fill_or_kill,
         )
 
         # Sign the order data (simplified)
@@ -392,18 +412,20 @@ async def place_order_sx(
         message = f"{market_id}:{side}:{price}:{size}"
         signature = wallet.sign_message(message)
 
-        order_payload['signature'] = signature
+        order_payload["signature"] = signature
 
         # Post to SX API
         sx_url = "https://api.sx.bet/orders"
         headers = {
-            'Content-Type': 'application/json',
+            "Content-Type": "application/json",
         }
         if api_key:
-            headers['X-API-Key'] = api_key
+            headers["X-API-Key"] = api_key
 
         # Use configurable timeout to handle slow networks and busy exchanges
-        timeout = aiohttp.ClientTimeout(total=API_TIMEOUT_TOTAL, connect=API_TIMEOUT_CONNECT)
+        timeout = aiohttp.ClientTimeout(
+            total=API_TIMEOUT_TOTAL, connect=API_TIMEOUT_CONNECT
+        )
         async with session.post(
             sx_url, json=order_payload, headers=headers, timeout=timeout
         ) as resp:
@@ -411,10 +433,10 @@ async def place_order_sx(
                 result = await resp.json()
 
                 # Validate API response
-                if 'error' in result:
+                if "error" in result:
                     raise TradeExecutionError(f"SX API error: {result['error']}")
 
-                order_id = result.get('orderId')
+                order_id = result.get("orderId")
                 if not order_id:
                     raise TradeExecutionError(
                         f"No orderId in response. Response: {result}"
@@ -424,17 +446,17 @@ async def place_order_sx(
 
                 # Check if IOC order was actually filled (not just accepted)
                 # Pass size to check for partial fills
-                check_ioc_order_filled(result, 'sx', order_type, expected_size=size)
+                check_ioc_order_filled(result, "sx", order_type, expected_size=size)
 
                 return {
-                    'status': 'success',
-                    'exchange': 'sx',
-                    'order_id': order_id,
-                    'market_id': market_id,
-                    'side': side,
-                    'price': price,
-                    'size': size,
-                    'response': result,
+                    "status": "success",
+                    "exchange": "sx",
+                    "order_id": order_id,
+                    "market_id": market_id,
+                    "side": side,
+                    "price": price,
+                    "size": size,
+                    "response": result,
                 }
             else:
                 error_text = await resp.text()
@@ -455,8 +477,8 @@ async def place_order_kalshi(
     price: float,
     size: int,  # Number of contracts
     api_key: Optional[str] = None,
-    order_type: str = 'IOC',  # 'IOC' for immediate execution or 'LIMIT'
-    _skip_balance_check: bool = False  # Internal: skip balance check if already reserved
+    order_type: str = "IOC",  # 'IOC' for immediate execution or 'LIMIT'
+    _skip_balance_check: bool = False,  # Internal: skip balance check if already reserved
 ) -> Dict:
     """
     Place an order on Kalshi with API key authentication.
@@ -479,17 +501,15 @@ async def place_order_kalshi(
         TradeExecutionError: If order placement fails
     """
     if not api_key:
-        logging.warning(
-            "Kalshi API key not provided. Order simulation only."
-        )
+        logging.warning("Kalshi API key not provided. Order simulation only.")
         return {
-            'status': 'simulated',
-            'exchange': 'kalshi',
-            'market_id': market_id,
-            'side': side,
-            'price': price,
-            'size': size,
-            'order_id': 'SIMULATED',
+            "status": "simulated",
+            "exchange": "kalshi",
+            "market_id": market_id,
+            "side": side,
+            "price": price,
+            "size": size,
+            "order_id": "SIMULATED",
         }
 
     try:
@@ -500,42 +520,49 @@ async def place_order_kalshi(
             # For Kalshi, size is number of contracts, convert to USD estimate
             # Each contract costs up to $1, so use size as USD amount
             usd_size = float(size)
-            if not balance_manager.check_balance('kalshi', usd_size):
-                available = balance_manager.get_balance('kalshi')
+            if not balance_manager.check_balance("kalshi", usd_size):
+                available = balance_manager.get_balance("kalshi")
                 raise InsufficientBalanceError(
                     f"Insufficient balance on Kalshi: "
                     f"required ${usd_size:.2f}, available ${available:.2f}"
                 )
         # Kalshi uses standard REST API with authentication
         # Map order type to Kalshi terminology
-        if order_type == 'IOC':
-            kalshi_type = 'market'  # Market orders execute immediately
+        if order_type == "IOC":
+            kalshi_type = "market"  # Market orders execute immediately
         else:
-            kalshi_type = 'limit'  # Limit orders wait in orderbook
+            kalshi_type = "limit"  # Limit orders wait in orderbook
 
         order_payload = {
-            'ticker': market_id,
-            'action': 'buy' if side.lower() == 'buy' else 'sell',
-            'side': 'yes',  # Assuming yes side
-            'yes_price': int(price),  # Price in cents
-            'count': size,
-            'type': kalshi_type,
+            "ticker": market_id,
+            "action": "buy" if side.lower() == "buy" else "sell",
+            "side": "yes",  # Assuming yes side
+            "yes_price": int(price),  # Price in cents
+            "count": size,
+            "type": kalshi_type,
         }
 
         # Log order type for monitoring
         logging.info(
             "Placing %s (%s) %s order on Kalshi: %s @ %.0f cents, count: %d",
-            order_type, kalshi_type, side.upper(), market_id, price, size
+            order_type,
+            kalshi_type,
+            side.upper(),
+            market_id,
+            price,
+            size,
         )
 
         kalshi_url = "https://trading-api.kalshi.com/trade-api/v2/portfolio/orders"
         headers = {
-            'Content-Type': 'application/json',
-            'Authorization': f'Bearer {api_key}',
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
         }
 
         # Use configurable timeout to handle slow networks and busy exchanges
-        timeout = aiohttp.ClientTimeout(total=API_TIMEOUT_TOTAL, connect=API_TIMEOUT_CONNECT)
+        timeout = aiohttp.ClientTimeout(
+            total=API_TIMEOUT_TOTAL, connect=API_TIMEOUT_CONNECT
+        )
         async with session.post(
             kalshi_url, json=order_payload, headers=headers, timeout=timeout
         ) as resp:
@@ -543,16 +570,16 @@ async def place_order_kalshi(
                 result = await resp.json()
 
                 # Validate API response
-                if 'error' in result:
+                if "error" in result:
                     raise TradeExecutionError(f"Kalshi API error: {result['error']}")
 
-                order_data = result.get('order', {})
+                order_data = result.get("order", {})
                 if not order_data:
                     raise TradeExecutionError(
                         f"No order data in response. Response: {result}"
                     )
 
-                order_id = order_data.get('order_id')
+                order_id = order_data.get("order_id")
                 if not order_id:
                     raise TradeExecutionError(
                         f"No order_id in response. Response: {result}"
@@ -562,22 +589,24 @@ async def place_order_kalshi(
 
                 # Check if IOC order was actually filled (not just accepted)
                 # Pass size to check for partial fills
-                check_ioc_order_filled(result, 'kalshi', order_type, expected_size=size)
+                check_ioc_order_filled(result, "kalshi", order_type, expected_size=size)
 
                 return {
-                    'status': 'success',
-                    'exchange': 'kalshi',
-                    'order_id': order_id,
-                    'market_id': market_id,
-                    'side': side,
-                    'price': price,
-                    'size': size,
-                    'response': result,
+                    "status": "success",
+                    "exchange": "kalshi",
+                    "order_id": order_id,
+                    "market_id": market_id,
+                    "side": side,
+                    "price": price,
+                    "size": size,
+                    "response": result,
                 }
             else:
                 error_text = await resp.text()
                 logging.error("Kalshi order failed: %s", error_text)
-                raise TradeExecutionError(f"Kalshi API error: {resp.status} - {error_text}")
+                raise TradeExecutionError(
+                    f"Kalshi API error: {resp.status} - {error_text}"
+                )
 
     except Exception as exc:
         logging.error("Failed to place Kalshi order: %s", exc, exc_info=True)
@@ -593,7 +622,7 @@ async def execute_arbitrage_trade(
     wallet: Optional[Wallet] = None,
     pm_api_key: Optional[str] = None,
     sx_api_key: Optional[str] = None,
-    dry_run: bool = True
+    dry_run: bool = True,
 ) -> Dict:
     """
     Execute an arbitrage trade across two exchanges.
@@ -621,16 +650,22 @@ async def execute_arbitrage_trade(
     if not opportunity or not isinstance(opportunity, dict):
         raise ValueError("Invalid opportunity: must be a non-empty dictionary")
 
-    required_keys = ['buy_exchange', 'sell_exchange', 'buy_price', 'sell_price', 'position_size']
+    required_keys = [
+        "buy_exchange",
+        "sell_exchange",
+        "buy_price",
+        "sell_price",
+        "position_size",
+    ]
     missing_keys = [key for key in required_keys if key not in opportunity]
     if missing_keys:
         raise ValueError(f"Invalid opportunity: missing required keys: {missing_keys}")
 
-    buy_exchange = opportunity['buy_exchange']
-    sell_exchange = opportunity['sell_exchange']
-    buy_price = opportunity['buy_price']
-    sell_price = opportunity['sell_price']
-    size = opportunity['position_size']
+    buy_exchange = opportunity["buy_exchange"]
+    sell_exchange = opportunity["sell_exchange"]
+    buy_price = opportunity["buy_price"]
+    sell_price = opportunity["sell_price"]
+    size = opportunity["position_size"]
 
     # Validate types
     if not isinstance(buy_exchange, str) or not isinstance(sell_exchange, str):
@@ -640,7 +675,9 @@ async def execute_arbitrage_trade(
             f"sell_exchange={type(sell_exchange).__name__}"
         )
 
-    if not isinstance(buy_price, (int, float)) or not isinstance(sell_price, (int, float)):
+    if not isinstance(buy_price, (int, float)) or not isinstance(
+        sell_price, (int, float)
+    ):
         raise ValueError(
             f"Prices must be numeric: "
             f"buy_price={type(buy_price).__name__}, "
@@ -651,7 +688,7 @@ async def execute_arbitrage_trade(
         raise ValueError(f"Size must be numeric: size={type(size).__name__}")
 
     # Validate exchange names
-    valid_exchanges = {'polymarket', 'sx', 'kalshi'}
+    valid_exchanges = {"polymarket", "sx", "kalshi"}
     buy_exchange_lower = buy_exchange.lower()
     sell_exchange_lower = sell_exchange.lower()
 
@@ -696,7 +733,11 @@ async def execute_arbitrage_trade(
     trade_logger = get_trade_logger()
     logging.info(
         "Executing arbitrage trade: Buy %s @ %.4f, Sell %s @ %.4f, Size: $%.2f",
-        buy_exchange, buy_price, sell_exchange, sell_price, size
+        buy_exchange,
+        buy_price,
+        sell_exchange,
+        sell_price,
+        size,
     )
 
     risk_manager = get_risk_manager()
@@ -716,21 +757,21 @@ async def execute_arbitrage_trade(
     if dry_run or not wallet:
         logging.info("DRY RUN: Orders not actually placed")
         result = {
-            'status': 'simulated',
-            'buy_exchange': buy_exchange,
-            'sell_exchange': sell_exchange,
-            'buy_order': {'status': 'simulated', 'price': buy_price, 'size': size},
-            'sell_order': {'status': 'simulated', 'price': sell_price, 'size': size},
-            'expected_pnl': opportunity['expected_pnl'],
+            "status": "simulated",
+            "buy_exchange": buy_exchange,
+            "sell_exchange": sell_exchange,
+            "buy_order": {"status": "simulated", "price": buy_price, "size": size},
+            "sell_order": {"status": "simulated", "price": sell_price, "size": size},
+            "expected_pnl": opportunity["expected_pnl"],
         }
 
         # Update metrics for simulated trade
         g_trades.inc()
-        update_pnl(opportunity['expected_pnl'])
+        update_pnl(opportunity["expected_pnl"])
 
         logging.info(
             "✅ Simulated trade executed. Expected PnL: $%.2f",
-            opportunity['expected_pnl']
+            opportunity["expected_pnl"],
         )
 
         trade_logger.info(
@@ -740,8 +781,11 @@ async def execute_arbitrage_trade(
             sell_exchange,
             sell_price,
             size,
-            opportunity['expected_pnl'],
-            extra={"exchange": f"{buy_exchange}/{sell_exchange}", "market": f"{pm_market_id}/{sx_market_id}"},
+            opportunity["expected_pnl"],
+            extra={
+                "exchange": f"{buy_exchange}/{sell_exchange}",
+                "market": f"{pm_market_id}/{sx_market_id}",
+            },
         )
 
         return result
@@ -779,31 +823,65 @@ async def execute_arbitrage_trade(
         # Prepare buy order coroutine
         # Use try-except to ensure balances are released if coroutine creation fails
         try:
-            if buy_exchange == 'polymarket':
+            if buy_exchange == "polymarket":
                 if not pm_token_id:
-                    raise TradeExecutionError("Polymarket token_id required for real trading")
+                    raise TradeExecutionError(
+                        "Polymarket token_id required for real trading"
+                    )
                 buy_order_coro = place_order_polymarket(
-                    session, pm_market_id, pm_token_id, 'buy', buy_price, size,
-                    wallet, pm_api_key, order_type='IOC', _skip_balance_check=True
+                    session,
+                    pm_market_id,
+                    pm_token_id,
+                    "buy",
+                    buy_price,
+                    size,
+                    wallet,
+                    pm_api_key,
+                    order_type="IOC",
+                    _skip_balance_check=True,
                 )
             else:  # sx
                 buy_order_coro = place_order_sx(
-                    session, sx_market_id, 'buy', buy_price, size,
-                    wallet, sx_api_key, order_type='IOC', _skip_balance_check=True
+                    session,
+                    sx_market_id,
+                    "buy",
+                    buy_price,
+                    size,
+                    wallet,
+                    sx_api_key,
+                    order_type="IOC",
+                    _skip_balance_check=True,
                 )
 
             # Prepare sell order coroutine
-            if sell_exchange == 'polymarket':
+            if sell_exchange == "polymarket":
                 if not pm_token_id:
-                    raise TradeExecutionError("Polymarket token_id required for real trading")
+                    raise TradeExecutionError(
+                        "Polymarket token_id required for real trading"
+                    )
                 sell_order_coro = place_order_polymarket(
-                    session, pm_market_id, pm_token_id, 'sell', sell_price, size,
-                    wallet, pm_api_key, order_type='IOC', _skip_balance_check=True
+                    session,
+                    pm_market_id,
+                    pm_token_id,
+                    "sell",
+                    sell_price,
+                    size,
+                    wallet,
+                    pm_api_key,
+                    order_type="IOC",
+                    _skip_balance_check=True,
                 )
             else:  # sx
                 sell_order_coro = place_order_sx(
-                    session, sx_market_id, 'sell', sell_price, size,
-                    wallet, sx_api_key, order_type='IOC', _skip_balance_check=True
+                    session,
+                    sx_market_id,
+                    "sell",
+                    sell_price,
+                    size,
+                    wallet,
+                    sx_api_key,
+                    order_type="IOC",
+                    _skip_balance_check=True,
                 )
         except Exception as exc:
             # If coroutine creation fails, release reserved balances
@@ -828,6 +906,33 @@ async def execute_arbitrage_trade(
         buy_failed = isinstance(buy_order, Exception)
         sell_failed = isinstance(sell_order, Exception)
 
+        # Additional check: verify IOC orders were actually filled
+        # This is needed when place_order_* functions are mocked in tests
+        # and don't call check_ioc_order_filled internally
+        if not buy_failed and isinstance(buy_order, dict):
+            response = buy_order.get("response", {})
+            if response:
+                try:
+                    check_ioc_order_filled(
+                        response, buy_exchange, "IOC", expected_size=size
+                    )
+                except TradeExecutionError as exc:
+                    # Convert successful response with CANCELLED status to failed order
+                    buy_order = exc
+                    buy_failed = True
+
+        if not sell_failed and isinstance(sell_order, dict):
+            response = sell_order.get("response", {})
+            if response:
+                try:
+                    check_ioc_order_filled(
+                        response, sell_exchange, "IOC", expected_size=size
+                    )
+                except TradeExecutionError as exc:
+                    # Convert successful response with CANCELLED status to failed order
+                    sell_order = exc
+                    sell_failed = True
+
         # If either order failed, we have a problem
         if buy_failed or sell_failed:
             error_msg = []
@@ -839,13 +944,16 @@ async def execute_arbitrage_trade(
             # Log the unhedged position risk and handle balances
             if buy_failed and not sell_failed:
                 sell_order_id = (
-                    sell_order.get('order_id') if isinstance(sell_order, dict)
-                    else 'unknown'
+                    sell_order.get("order_id")
+                    if isinstance(sell_order, dict)
+                    else "unknown"
                 )
                 logging.error(
                     "🚨 CRITICAL: Buy failed but sell succeeded! "
                     "Unhedged position: %s %s @ %.4f",
-                    sell_exchange, sell_order_id, sell_price
+                    sell_exchange,
+                    sell_order_id,
+                    sell_price,
                 )
                 risk_manager.handle_unhedged_leg("Buy leg failed while sell leg filled")
                 asyncio.create_task(
@@ -868,13 +976,16 @@ async def execute_arbitrage_trade(
                     sell_reserved = False
             elif sell_failed and not buy_failed:
                 buy_order_id = (
-                    buy_order.get('order_id') if isinstance(buy_order, dict)
-                    else 'unknown'
+                    buy_order.get("order_id")
+                    if isinstance(buy_order, dict)
+                    else "unknown"
                 )
                 logging.error(
                     "🚨 CRITICAL: Sell failed but buy succeeded! "
                     "Unhedged position: %s %s @ %.4f",
-                    buy_exchange, buy_order_id, buy_price
+                    buy_exchange,
+                    buy_order_id,
+                    buy_price,
                 )
                 risk_manager.handle_unhedged_leg("Sell leg failed while buy leg filled")
                 asyncio.create_task(
@@ -914,11 +1025,16 @@ async def execute_arbitrage_trade(
         # that BOTH orders were FULLY FILLED (not cancelled or partially filled).
         # This is CRITICAL for arbitrage - any partial fill or cancellation would
         # create an unhedged position and potential loss.
-        buy_order_id = buy_order.get('order_id') if isinstance(buy_order, dict) else 'unknown'
-        sell_order_id = sell_order.get('order_id') if isinstance(sell_order, dict) else 'unknown'
+        buy_order_id = (
+            buy_order.get("order_id") if isinstance(buy_order, dict) else "unknown"
+        )
+        sell_order_id = (
+            sell_order.get("order_id") if isinstance(sell_order, dict) else "unknown"
+        )
         logging.info(
             "✅ Both orders placed successfully: buy=%s, sell=%s",
-            buy_order_id, sell_order_id
+            buy_order_id,
+            sell_order_id,
         )
 
         # Commit both balances (orders were successful)
@@ -931,20 +1047,20 @@ async def execute_arbitrage_trade(
 
         # Both orders filled successfully - update metrics
         g_trades.inc()
-        update_pnl(opportunity['expected_pnl'])
+        update_pnl(opportunity["expected_pnl"])
 
         result = {
-            'status': 'executed',
-            'buy_exchange': buy_exchange,
-            'sell_exchange': sell_exchange,
-            'buy_order': buy_order,
-            'sell_order': sell_order,
-            'expected_pnl': opportunity['expected_pnl'],
+            "status": "executed",
+            "buy_exchange": buy_exchange,
+            "sell_exchange": sell_exchange,
+            "buy_order": buy_order,
+            "sell_order": sell_order,
+            "expected_pnl": opportunity["expected_pnl"],
         }
 
         logging.info(
             "✅ Trade executed successfully. Expected PnL: $%.2f",
-            opportunity['expected_pnl']
+            opportunity["expected_pnl"],
         )
 
         trade_logger.info(
@@ -954,8 +1070,11 @@ async def execute_arbitrage_trade(
             sell_exchange,
             sell_price,
             size,
-            opportunity['expected_pnl'],
-            extra={"exchange": f"{buy_exchange}/{sell_exchange}", "market": f"{pm_market_id}/{sx_market_id}"},
+            opportunity["expected_pnl"],
+            extra={
+                "exchange": f"{buy_exchange}/{sell_exchange}",
+                "market": f"{pm_market_id}/{sx_market_id}",
+            },
         )
 
         return result
@@ -970,14 +1089,16 @@ async def execute_arbitrage_trade(
         try:
             # Only release if still reserved (not already committed/released)
             # This prevents double-release errors
-            if 'buy_reserved' in locals() and buy_reserved:
+            if "buy_reserved" in locals() and buy_reserved:
                 balance_manager = get_balance_manager()
                 balance_manager.release_balance(buy_exchange, size)
-            if 'sell_reserved' in locals() and sell_reserved:
+            if "sell_reserved" in locals() and sell_reserved:
                 balance_manager = get_balance_manager()
                 balance_manager.release_balance(sell_exchange, size)
         except Exception as release_exc:
-            logging.error("Failed to release balances during error cleanup: %s", release_exc)
+            logging.error(
+                "Failed to release balances during error cleanup: %s", release_exc
+            )
         raise
     finally:
         if reservation_id:
