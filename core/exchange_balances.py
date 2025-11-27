@@ -35,12 +35,12 @@ class ExchangeBalanceManager:
         self._lock = Lock()
 
         # Get initial balances from environment (default: $10 per exchange)
-        default_balance = float(os.getenv('EXCHANGE_INITIAL_BALANCE', '10.0'))
+        default_balance = float(os.getenv("EXCHANGE_INITIAL_BALANCE", "10.0"))
 
         self._initial_balances = {
-            'polymarket': float(os.getenv('POLYMARKET_BALANCE', str(default_balance))),
-            'sx': float(os.getenv('SX_BALANCE', str(default_balance))),
-            'kalshi': float(os.getenv('KALSHI_BALANCE', str(default_balance))),
+            "polymarket": float(os.getenv("POLYMARKET_BALANCE", str(default_balance))),
+            "sx": float(os.getenv("SX_BALANCE", str(default_balance))),
+            "kalshi": float(os.getenv("KALSHI_BALANCE", str(default_balance))),
         }
 
         # Current available balances (will decrease as orders are placed)
@@ -48,9 +48,9 @@ class ExchangeBalanceManager:
 
         # Track locked/pending funds
         self._locked_balances = {
-            'polymarket': 0.0,
-            'sx': 0.0,
-            'kalshi': 0.0,
+            "polymarket": 0.0,
+            "sx": 0.0,
+            "kalshi": 0.0,
         }
 
         logging.info("Exchange balances initialized:")
@@ -116,7 +116,10 @@ class ExchangeBalanceManager:
             sufficient = available >= amount
             logging.debug(
                 "Check balance for %s: required=$%.2f, available=$%.2f, sufficient=%s",
-                exchange, amount, available, sufficient
+                exchange,
+                amount,
+                available,
+                sufficient,
             )
             return sufficient
 
@@ -151,9 +154,11 @@ class ExchangeBalanceManager:
 
             logging.info(
                 "Reserved $%.2f on %s (available: $%.2f -> $%.2f, locked: $%.2f)",
-                amount, exchange,
-                available, self._balances[exchange_lower],
-                self._locked_balances[exchange_lower]
+                amount,
+                exchange,
+                available,
+                self._balances[exchange_lower],
+                self._locked_balances[exchange_lower],
             )
 
     def commit_order(self, exchange: str, amount: float) -> None:
@@ -175,7 +180,9 @@ class ExchangeBalanceManager:
             if locked < amount:
                 logging.warning(
                     "Commit amount $%.2f exceeds locked balance $%.2f on %s",
-                    amount, locked, exchange
+                    amount,
+                    locked,
+                    exchange,
                 )
                 # Still commit, but log the issue
                 self._locked_balances[exchange_lower] = 0.0
@@ -184,7 +191,10 @@ class ExchangeBalanceManager:
 
             logging.info(
                 "Committed $%.2f on %s (locked: $%.2f -> $%.2f)",
-                amount, exchange, locked, self._locked_balances[exchange_lower]
+                amount,
+                exchange,
+                locked,
+                self._locked_balances[exchange_lower],
             )
 
     def release_balance(self, exchange: str, amount: float) -> None:
@@ -205,7 +215,9 @@ class ExchangeBalanceManager:
             if locked < amount:
                 logging.warning(
                     "Release amount $%.2f exceeds locked balance $%.2f on %s",
-                    amount, locked, exchange
+                    amount,
+                    locked,
+                    exchange,
                 )
                 # Release whatever is locked
                 release_amount = locked
@@ -218,9 +230,10 @@ class ExchangeBalanceManager:
 
             logging.info(
                 "Released $%.2f on %s (available: $%.2f, locked: $%.2f)",
-                release_amount, exchange,
+                release_amount,
+                exchange,
                 self._balances[exchange_lower],
-                self._locked_balances[exchange_lower]
+                self._locked_balances[exchange_lower],
             )
 
     def reset_balances(self) -> None:
@@ -228,9 +241,9 @@ class ExchangeBalanceManager:
         with self._lock:
             self._balances = self._initial_balances.copy()
             self._locked_balances = {
-                'polymarket': 0.0,
-                'sx': 0.0,
-                'kalshi': 0.0,
+                "polymarket": 0.0,
+                "sx": 0.0,
+                "kalshi": 0.0,
             }
             logging.info("Balances reset to initial values")
 
@@ -244,12 +257,12 @@ class ExchangeBalanceManager:
         with self._lock:
             return {
                 exchange: {
-                    'available': self._balances[exchange],
-                    'locked': self._locked_balances[exchange],
-                    'total': self._balances[exchange] + self._locked_balances[exchange],
-                    'initial': self._initial_balances[exchange],
+                    "available": self._balances[exchange],
+                    "locked": self._locked_balances[exchange],
+                    "total": self._balances[exchange] + self._locked_balances[exchange],
+                    "initial": self._initial_balances[exchange],
                 }
-                for exchange in ['polymarket', 'sx', 'kalshi']
+                for exchange in ["polymarket", "sx", "kalshi"]
             }
 
 

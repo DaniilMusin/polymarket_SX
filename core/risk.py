@@ -23,7 +23,11 @@ class PanicError(Exception):
 class RiskManager:
     def __init__(self) -> None:
         self._lock = Lock()
-        self._exchange_exposure: Dict[str, float] = {"polymarket": 0.0, "sx": 0.0, "kalshi": 0.0}
+        self._exchange_exposure: Dict[str, float] = {
+            "polymarket": 0.0,
+            "sx": 0.0,
+            "kalshi": 0.0,
+        }
         self._market_exposure: Dict[str, float] = {}
         self._open_arbs = 0
         self._panic_reason: Optional[str] = None
@@ -54,7 +58,9 @@ class RiskManager:
             # Fire and forget
             import asyncio
 
-            asyncio.create_task(alert_mgr.send_critical_alert("Panic mode", message, details))
+            asyncio.create_task(
+                alert_mgr.send_critical_alert("Panic mode", message, details)
+            )
         except Exception:
             logging.exception("Failed to dispatch panic alert")
 
@@ -94,12 +100,20 @@ class RiskManager:
                     )
 
             # Apply reservations
-            self._exchange_exposure[buy_exchange] = self._exchange_exposure.get(buy_exchange, 0.0) + size
-            self._exchange_exposure[sell_exchange] = self._exchange_exposure.get(sell_exchange, 0.0) + size
+            self._exchange_exposure[buy_exchange] = (
+                self._exchange_exposure.get(buy_exchange, 0.0) + size
+            )
+            self._exchange_exposure[sell_exchange] = (
+                self._exchange_exposure.get(sell_exchange, 0.0) + size
+            )
             if buy_market:
-                self._market_exposure[buy_market] = self._market_exposure.get(buy_market, 0.0) + size
+                self._market_exposure[buy_market] = (
+                    self._market_exposure.get(buy_market, 0.0) + size
+                )
             if sell_market:
-                self._market_exposure[sell_market] = self._market_exposure.get(sell_market, 0.0) + size
+                self._market_exposure[sell_market] = (
+                    self._market_exposure.get(sell_market, 0.0) + size
+                )
             self._open_arbs += 1
             self._log_state()
             return trade_id
@@ -117,8 +131,12 @@ class RiskManager:
         buy_exchange = buy_exchange.lower()
         sell_exchange = sell_exchange.lower()
         with self._lock:
-            self._exchange_exposure[buy_exchange] = max(0.0, self._exchange_exposure.get(buy_exchange, 0.0) - size)
-            self._exchange_exposure[sell_exchange] = max(0.0, self._exchange_exposure.get(sell_exchange, 0.0) - size)
+            self._exchange_exposure[buy_exchange] = max(
+                0.0, self._exchange_exposure.get(buy_exchange, 0.0) - size
+            )
+            self._exchange_exposure[sell_exchange] = max(
+                0.0, self._exchange_exposure.get(sell_exchange, 0.0) - size
+            )
             if buy_market:
                 self._market_exposure[buy_market] = max(
                     0.0, self._market_exposure.get(buy_market, 0.0) - size

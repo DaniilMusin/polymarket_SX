@@ -80,7 +80,9 @@ class EventValidator:
             #
             # To explicitly allow unvalidated trading (NOT RECOMMENDED), set:
             # ALLOW_UNVALIDATED_EVENTS=true in .env
-            allow_unvalidated = os.getenv("ALLOW_UNVALIDATED_EVENTS", "false").lower() == "true"
+            allow_unvalidated = (
+                os.getenv("ALLOW_UNVALIDATED_EVENTS", "false").lower() == "true"
+            )
 
             if not allow_unvalidated:
                 logging.error(

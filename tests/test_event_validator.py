@@ -57,23 +57,37 @@ def test_validator_with_api_key():
 @pytest.mark.asyncio
 async def test_validate_events_without_api_key():
     """Test validation when API key is not set."""
-    validator = EventValidator()  # No API key
-    session = DummySession({})
+    import os
 
-    result = await validator.validate_events(
-        session,
-        "Event 1",
-        "Description 1",
-        "Polymarket",
-        "Event 2",
-        "Description 2",
-        "Kalshi",
-    )
+    # Set environment variable to allow unvalidated events
+    # This simulates the user explicitly accepting the risk
+    old_value = os.environ.get("ALLOW_UNVALIDATED_EVENTS")
+    os.environ["ALLOW_UNVALIDATED_EVENTS"] = "true"
 
-    assert result["are_same"] is True  # Defaults to True when disabled
-    assert result["confidence"] == "unknown"
-    assert "disabled" in result["reasoning"].lower()
-    assert result["warning"] is not None
+    try:
+        validator = EventValidator()  # No API key
+        session = DummySession({})
+
+        result = await validator.validate_events(
+            session,
+            "Event 1",
+            "Description 1",
+            "Polymarket",
+            "Event 2",
+            "Description 2",
+            "Kalshi",
+        )
+
+        assert result["are_same"] is True  # Defaults to True when disabled
+        assert result["confidence"] == "unknown"
+        assert "disabled" in result["reasoning"].lower()
+        assert result["warning"] is not None
+    finally:
+        # Restore original value
+        if old_value is None:
+            os.environ.pop("ALLOW_UNVALIDATED_EVENTS", None)
+        else:
+            os.environ["ALLOW_UNVALIDATED_EVENTS"] = old_value
 
 
 @pytest.mark.asyncio

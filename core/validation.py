@@ -83,7 +83,7 @@ def validate_risk_config() -> None:
         logger.error("")
         for i, error in enumerate(errors, 1):
             logger.error(f"ERROR #{i}:")
-            for line in error.split('\n'):
+            for line in error.split("\n"):
                 logger.error(f"  {line}")
             logger.error("")
 
@@ -117,6 +117,7 @@ def validate_wallet_config() -> None:
     Raises RuntimeError if real trading is enabled but credentials are missing.
     """
     import os
+
     logger = logging.getLogger(__name__)
 
     if not config.ENABLE_REAL_TRADING:
@@ -128,22 +129,22 @@ def validate_wallet_config() -> None:
     errors = []
 
     # Check private key
-    private_key = os.getenv('PRIVATE_KEY', '')
-    if not private_key or 'YOUR-PRIVATE-KEY' in private_key.upper():
+    private_key = os.getenv("PRIVATE_KEY", "")
+    if not private_key or "YOUR-PRIVATE-KEY" in private_key.upper():
         errors.append("PRIVATE_KEY not configured (still has placeholder value)")
 
     # Check API keys (at least one exchange should be configured)
-    pm_key = os.getenv('POLYMARKET_API_KEY', '')
-    sx_key = os.getenv('SX_API_KEY', '')
-    kalshi_key = os.getenv('KALSHI_API_KEY', '')
+    pm_key = os.getenv("POLYMARKET_API_KEY", "")
+    sx_key = os.getenv("SX_API_KEY", "")
+    kalshi_key = os.getenv("KALSHI_API_KEY", "")
 
     configured_exchanges = []
-    if pm_key and 'YOUR' not in pm_key.upper():
-        configured_exchanges.append('Polymarket')
-    if sx_key and 'YOUR' not in sx_key.upper():
-        configured_exchanges.append('SX')
-    if kalshi_key and 'YOUR' not in kalshi_key.upper():
-        configured_exchanges.append('Kalshi')
+    if pm_key and "YOUR" not in pm_key.upper():
+        configured_exchanges.append("Polymarket")
+    if sx_key and "YOUR" not in sx_key.upper():
+        configured_exchanges.append("SX")
+    if kalshi_key and "YOUR" not in kalshi_key.upper():
+        configured_exchanges.append("Kalshi")
 
     if not configured_exchanges:
         errors.append(
@@ -167,7 +168,7 @@ def validate_wallet_config() -> None:
             "Wallet/API validation failed. Cannot run real trading without credentials."
         )
 
-    logger.info(f"✓ Wallet validation PASSED")
+    logger.info("✓ Wallet validation PASSED")
     logger.info(f"  Configured exchanges: {', '.join(configured_exchanges)}")
 
 

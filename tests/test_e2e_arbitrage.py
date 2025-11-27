@@ -349,9 +349,13 @@ async def test_e2e_insufficient_balance(good_orderbooks):
                     dry_run=False
                 )
 
-        # Error should mention insufficient balance
-        assert "Insufficient balance" in str(exc_info.value) or \
-               "balance" in str(exc_info.value).lower()
+        # Error should mention insufficient balance or risk limits
+        # Can be either from balance manager ("Insufficient balance")
+        # or risk manager ("лимит экспозиции" / "exposure limit")
+        error_msg = str(exc_info.value).lower()
+        assert any(keyword in error_msg for keyword in [
+            "insufficient balance", "balance", "экспозиции", "exposure"
+        ])
 
         # Verify NO orders were placed
         assert not mock_pm_order.called

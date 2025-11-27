@@ -141,7 +141,7 @@ class Wallet:
             raise WalletError(f"Failed to sign transaction: {exc}") from exc
 
     @staticmethod
-    def create_random_wallet() -> 'Wallet':
+    def create_random_wallet() -> "Wallet":
         """
         Create a new random wallet.
 
@@ -154,16 +154,10 @@ class Wallet:
         account = Account.create()
         private_key_hex = account.key.hex()
         logging.warning(
-            "Created new wallet: %s (SAVE THE PRIVATE KEY SECURELY!)",
-            account.address
+            "Created new wallet: %s (SAVE THE PRIVATE KEY SECURELY!)", account.address
         )
-        logging.warning(
-            "⚠️  PRIVATE KEY: %s",
-            private_key_hex
-        )
-        logging.warning(
-            "⚠️  SAVE THIS KEY IMMEDIATELY! IT WILL NOT BE SHOWN AGAIN!"
-        )
+        logging.warning("⚠️  PRIVATE KEY: %s", private_key_hex)
+        logging.warning("⚠️  SAVE THIS KEY IMMEDIATELY! IT WILL NOT BE SHOWN AGAIN!")
         return Wallet(private_key=private_key_hex)
 
 
@@ -256,10 +250,10 @@ class PolymarketOrderSigner:
             if isinstance(token_id, str):
                 # Strip any 0x prefix and validate hex format
                 token_id_clean = token_id.lower()
-                if token_id_clean.startswith('0x'):
+                if token_id_clean.startswith("0x"):
                     token_id_clean = token_id_clean[2:]
                 # Validate hex string format
-                if not all(c in '0123456789abcdef' for c in token_id_clean):
+                if not all(c in "0123456789abcdef" for c in token_id_clean):
                     raise ValueError("Invalid hex string format")
                 token_id_int = int(token_id_clean, 16)
             else:
@@ -269,7 +263,9 @@ class PolymarketOrderSigner:
             if token_id_int < 0:
                 raise ValueError(f"tokenId must be non-negative, got: {token_id_int}")
             if token_id_int >= (1 << 256):  # 2^256
-                raise ValueError(f"tokenId exceeds uint256 maximum, got: {token_id_int}")
+                raise ValueError(
+                    f"tokenId exceeds uint256 maximum, got: {token_id_int}"
+                )
         except (ValueError, TypeError) as exc:
             raise WalletError(f"Invalid tokenId '{token_id}': {exc}") from exc
 
@@ -296,7 +292,9 @@ class PolymarketOrderSigner:
         }
 
         signature = self.wallet.sign_typed_data(typed_data)
-        logging.info("Signed Polymarket order: side=%d, signature=%s...", side, signature[:10])
+        logging.info(
+            "Signed Polymarket order: side=%d, signature=%s...", side, signature[:10]
+        )
         return signature
 
 
