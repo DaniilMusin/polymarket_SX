@@ -11,6 +11,11 @@ g_pnl = Gauge(
     "Cumulative PnL (USDC). This value is not automatically reset between runs.",
 )
 
+# Virtual balances tracked by the ExchangeBalanceManager (simulation-safe)
+g_balance_pm = Gauge("arb_balance_polymarket", "Balance on Polymarket (virtual USD)")
+g_balance_sx = Gauge("arb_balance_sx", "Balance on SX (virtual USD)")
+g_balance_kalshi = Gauge("arb_balance_kalshi", "Balance on Kalshi (virtual USD)")
+
 # Thread-safe PnL tracking
 _pnl_total = 0.0
 _pnl_lock = threading.Lock()
