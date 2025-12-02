@@ -20,6 +20,8 @@ from pathlib import Path
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+import asyncio
+
 
 class Colors:
     GREEN = '\033[92m'
@@ -52,6 +54,8 @@ def main():
     )
     parser.add_argument(
         '--duration',
+        '--timeout',
+        dest='duration',
         type=int,
         default=300,
         help='Run duration in seconds (default: 300 = 5 minutes)'
@@ -102,33 +106,25 @@ def main():
     print("=" * 80 + "\n")
 
     # Import and run main
-    try:
-        import main
-        # Run for specified duration
-        import time
-        import threading
+    async def run_with_timeout():
+        try:
+            import main
 
-        def stop_after_timeout():
-            time.sleep(args.duration)
+            await asyncio.wait_for(main.main(), timeout=args.duration)
+        except asyncio.TimeoutError:
             print(
                 f"\n\n{Colors.YELLOW}Test duration reached ({args.duration}s). "
                 f"Stopping...{Colors.END}"
             )
-            os._exit(0)
+        except KeyboardInterrupt:
+            print(f"\n\n{Colors.YELLOW}Test stopped by user.{Colors.END}")
+        except Exception as exc:
+            print(f"\n\n{Colors.RED}Test failed: {exc}{Colors.END}")
+            import traceback
+            traceback.print_exc()
+            sys.exit(1)
 
-        timer = threading.Thread(target=stop_after_timeout, daemon=True)
-        timer.start()
-
-        # Run main
-        main.main()
-
-    except KeyboardInterrupt:
-        print(f"\n\n{Colors.YELLOW}Test stopped by user.{Colors.END}")
-    except Exception as exc:
-        print(f"\n\n{Colors.RED}Test failed: {exc}{Colors.END}")
-        import traceback
-        traceback.print_exc()
-        sys.exit(1)
+    asyncio.run(run_with_timeout())
 
 
 if __name__ == '__main__':

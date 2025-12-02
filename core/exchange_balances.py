@@ -16,6 +16,8 @@ import logging
 from typing import Dict, Optional
 from threading import Lock
 
+from core.metrics import g_balance_pm, g_balance_sx, g_balance_kalshi
+
 
 class InsufficientBalanceError(Exception):
     """Raised when trying to place an order with insufficient balance."""
@@ -56,6 +58,7 @@ class ExchangeBalanceManager:
         logging.info("Exchange balances initialized:")
         for exchange, balance in self._balances.items():
             logging.info("  %s: $%.2f", exchange, balance)
+            self._update_balance_metric(exchange)
 
     def get_balance(self, exchange: str) -> float:
         """
@@ -160,6 +163,7 @@ class ExchangeBalanceManager:
                 self._balances[exchange_lower],
                 self._locked_balances[exchange_lower],
             )
+            self._update_balance_metric(exchange_lower)
 
     def commit_order(self, exchange: str, amount: float) -> None:
         """
@@ -196,6 +200,7 @@ class ExchangeBalanceManager:
                 locked,
                 self._locked_balances[exchange_lower],
             )
+            self._update_balance_metric(exchange_lower)
 
     def release_balance(self, exchange: str, amount: float) -> None:
         """
@@ -235,6 +240,7 @@ class ExchangeBalanceManager:
                 self._balances[exchange_lower],
                 self._locked_balances[exchange_lower],
             )
+            self._update_balance_metric(exchange_lower)
 
     def reset_balances(self) -> None:
         """Reset all balances to initial values."""
@@ -246,6 +252,8 @@ class ExchangeBalanceManager:
                 "kalshi": 0.0,
             }
             logging.info("Balances reset to initial values")
+            for exchange in ["polymarket", "sx", "kalshi"]:
+                self._update_balance_metric(exchange)
 
     def get_all_balances(self) -> Dict[str, Dict[str, float]]:
         """
@@ -264,6 +272,24 @@ class ExchangeBalanceManager:
                 }
                 for exchange in ["polymarket", "sx", "kalshi"]
             }
+
+    def _update_balance_metric(self, exchange: str) -> None:
+        """Sync Prometheus gauges with the current virtual balances."""
+
+        gauge_map = {
+            "polymarket": g_balance_pm,
+            "sx": g_balance_sx,
+            "kalshi": g_balance_kalshi,
+        }
+
+        gauge = gauge_map.get(exchange)
+        if gauge is None:
+            return
+
+        total_balance = self._balances.get(exchange, 0.0) + self._locked_balances.get(
+            exchange, 0.0
+        )
+        gauge.set(total_balance)
 
 
 # Global balance manager instance
