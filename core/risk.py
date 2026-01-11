@@ -70,12 +70,15 @@ class RiskManager:
         sell_exchange: str,
         buy_market: Optional[str],
         sell_market: Optional[str],
-        size: float,
+        buy_size: float,
+        sell_size: Optional[float] = None,
     ) -> str:
         """Reserve exposure for a new arbitrage if limits allow."""
         buy_exchange = buy_exchange.lower()
         sell_exchange = sell_exchange.lower()
         trade_id = str(uuid.uuid4())
+        if sell_size is None:
+            sell_size = buy_size
 
         with self._lock:
             if self._panic_reason:
@@ -83,36 +86,45 @@ class RiskManager:
             if self._open_arbs >= MAX_OPEN_ARBITRAGES:
                 raise PanicError("Достигнут лимит параллельных арбитражей")
 
-            for exchange in (buy_exchange, sell_exchange):
-                projected = self._exchange_exposure.get(exchange, 0.0) + size
-                if projected > MAX_EXCHANGE_EXPOSURE:
-                    raise PanicError(
-                        f"Превышен лимит экспозиции на {exchange}: {projected:.2f} > {MAX_EXCHANGE_EXPOSURE:.2f}"
-                    )
+            projected_buy = self._exchange_exposure.get(buy_exchange, 0.0) + buy_size
+            if projected_buy > MAX_EXCHANGE_EXPOSURE:
+                raise PanicError(
+                    f"Превышен лимит экспозиции на {buy_exchange}: {projected_buy:.2f} > {MAX_EXCHANGE_EXPOSURE:.2f}"
+                )
 
-            for market in (buy_market, sell_market):
-                if not market:
-                    continue
-                projected = self._market_exposure.get(market, 0.0) + size
+            projected_sell = self._exchange_exposure.get(sell_exchange, 0.0) + sell_size
+            if projected_sell > MAX_EXCHANGE_EXPOSURE:
+                raise PanicError(
+                    f"Превышен лимит экспозиции на {sell_exchange}: {projected_sell:.2f} > {MAX_EXCHANGE_EXPOSURE:.2f}"
+                )
+
+            if buy_market:
+                projected = self._market_exposure.get(buy_market, 0.0) + buy_size
                 if projected > MAX_MARKET_EXPOSURE:
                     raise PanicError(
-                        f"Превышен лимит позиции на рынок {market}: {projected:.2f} > {MAX_MARKET_EXPOSURE:.2f}"
+                        f"Превышен лимит позиции на рынок {buy_market}: {projected:.2f} > {MAX_MARKET_EXPOSURE:.2f}"
+                    )
+            if sell_market:
+                projected = self._market_exposure.get(sell_market, 0.0) + sell_size
+                if projected > MAX_MARKET_EXPOSURE:
+                    raise PanicError(
+                        f"Превышен лимит позиции на рынок {sell_market}: {projected:.2f} > {MAX_MARKET_EXPOSURE:.2f}"
                     )
 
             # Apply reservations
             self._exchange_exposure[buy_exchange] = (
-                self._exchange_exposure.get(buy_exchange, 0.0) + size
+                self._exchange_exposure.get(buy_exchange, 0.0) + buy_size
             )
             self._exchange_exposure[sell_exchange] = (
-                self._exchange_exposure.get(sell_exchange, 0.0) + size
+                self._exchange_exposure.get(sell_exchange, 0.0) + sell_size
             )
             if buy_market:
                 self._market_exposure[buy_market] = (
-                    self._market_exposure.get(buy_market, 0.0) + size
+                    self._market_exposure.get(buy_market, 0.0) + buy_size
                 )
             if sell_market:
                 self._market_exposure[sell_market] = (
-                    self._market_exposure.get(sell_market, 0.0) + size
+                    self._market_exposure.get(sell_market, 0.0) + sell_size
                 )
             self._open_arbs += 1
             self._log_state()
@@ -125,25 +137,28 @@ class RiskManager:
         sell_exchange: str,
         buy_market: Optional[str],
         sell_market: Optional[str],
-        size: float,
+        buy_size: float,
+        sell_size: Optional[float] = None,
     ) -> None:
         """Release exposure for a finished arbitrage."""
         buy_exchange = buy_exchange.lower()
         sell_exchange = sell_exchange.lower()
+        if sell_size is None:
+            sell_size = buy_size
         with self._lock:
             self._exchange_exposure[buy_exchange] = max(
-                0.0, self._exchange_exposure.get(buy_exchange, 0.0) - size
+                0.0, self._exchange_exposure.get(buy_exchange, 0.0) - buy_size
             )
             self._exchange_exposure[sell_exchange] = max(
-                0.0, self._exchange_exposure.get(sell_exchange, 0.0) - size
+                0.0, self._exchange_exposure.get(sell_exchange, 0.0) - sell_size
             )
             if buy_market:
                 self._market_exposure[buy_market] = max(
-                    0.0, self._market_exposure.get(buy_market, 0.0) - size
+                    0.0, self._market_exposure.get(buy_market, 0.0) - buy_size
                 )
             if sell_market:
                 self._market_exposure[sell_market] = max(
-                    0.0, self._market_exposure.get(sell_market, 0.0) - size
+                    0.0, self._market_exposure.get(sell_market, 0.0) - sell_size
                 )
             self._open_arbs = max(0, self._open_arbs - 1)
             self._log_state()

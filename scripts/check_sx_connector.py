@@ -24,6 +24,10 @@ from aiohttp import ClientSession
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+# Ensure aiohttp works with aiodns on Windows
+if sys.platform.startswith("win"):
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 from connectors import sx
 from core.logging_config import setup_logging
 
@@ -56,9 +60,11 @@ async def test_orderbook(market_id: str):
             print(f"  Best Bid:    {Colors.GREEN}{orderbook['best_bid']:.4f}{Colors.END}")
             print(f"  Best Ask:    {Colors.RED}{orderbook['best_ask']:.4f}{Colors.END}")
             print(f"  Spread:      {Colors.YELLOW}{(orderbook['best_ask'] - orderbook['best_bid']):.4f} ({(orderbook['best_ask'] - orderbook['best_bid']) / orderbook['best_bid'] * 100:.2f}%){Colors.END}")
-            print(f"  Bid Depth:   ${orderbook['bid_depth']:.2f}")
-            print(f"  Ask Depth:   ${orderbook['ask_depth']:.2f}")
-            print(f"  Total Depth: ${orderbook['total_depth']:.2f}")
+            print(f"  Bid Depth (notional):   ${orderbook['bid_notional_depth']:.2f}")
+            print(f"  Ask Depth (notional):   ${orderbook['ask_notional_depth']:.2f}")
+            print(f"  Total Depth (notional): ${orderbook['total_notional_depth']:.2f}")
+            print(f"  Bid Qty Depth:          {orderbook['bid_qty_depth']:.2f}")
+            print(f"  Ask Qty Depth:          {orderbook['ask_qty_depth']:.2f}")
 
             # Display top 5 bids and asks
             print(f"\n{Colors.BOLD}Top 5 Bids:{Colors.END}")
@@ -67,7 +73,7 @@ async def test_orderbook(market_id: str):
                 for i, bid in enumerate(bids, 1):
                     price = bid.get('price', 0)
                     size = bid.get('size', 0)
-                    print(f"  {i}. {Colors.GREEN}{price:.4f}{Colors.END} @ ${size:.2f}")
+                    print(f"  {i}. {Colors.GREEN}{price:.4f}{Colors.END} @ {size:.2f} qty")
             else:
                 print(f"  {Colors.YELLOW}No bids available{Colors.END}")
 
@@ -77,7 +83,7 @@ async def test_orderbook(market_id: str):
                 for i, ask in enumerate(asks, 1):
                     price = ask.get('price', 0)
                     size = ask.get('size', 0)
-                    print(f"  {i}. {Colors.RED}{price:.4f}{Colors.END} @ ${size:.2f}")
+                    print(f"  {i}. {Colors.RED}{price:.4f}{Colors.END} @ {size:.2f} qty")
             else:
                 print(f"  {Colors.YELLOW}No asks available{Colors.END}")
 
@@ -98,8 +104,8 @@ async def test_orderbook(market_id: str):
                 checks.append((False, "Bid >= Ask (crossed market!)"))
 
             # Check 3: Has depth
-            if orderbook['total_depth'] > 0:
-                checks.append((True, f"Has liquidity (${orderbook['total_depth']:.2f})"))
+            if orderbook['total_notional_depth'] > 0:
+                checks.append((True, f"Has liquidity (${orderbook['total_notional_depth']:.2f})"))
             else:
                 checks.append((False, "No liquidity available"))
 

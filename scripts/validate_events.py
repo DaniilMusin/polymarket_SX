@@ -20,14 +20,16 @@ Requirements:
     - Or ALLOW_UNVALIDATED_EVENTS=true (NOT RECOMMENDED)
 """
 
-import asyncio
 import argparse
+import asyncio
 import logging
+import os
 import sys
+
 from aiohttp import ClientSession
 
 # Add parent directory to path
-sys.path.insert(0, '/home/user/polymarket_SX')
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from core.event_validator import EventValidator, EventValidationError
 from core.logging_config import setup_logging

@@ -113,10 +113,13 @@ async def test_kalshi_valid_response():
     # Result is now a dict with orderbook structure
     assert isinstance(result, dict)
     assert 'total_depth' in result
+    assert 'total_qty_depth' in result
     # Should sum yes quantities: 100 + 200 + 150 = 450
     # and no quantities: 100 + 200 = 300
-    # total = 450 + 300 = 750
-    assert result['total_depth'] == 750.0
+    # total qty = 450 + 300 = 750
+    assert result['total_qty_depth'] == 750.0
+    # Notional uses price * qty for each side
+    assert result['total_depth'] == 365.0
 
 
 @pytest.mark.asyncio
@@ -128,3 +131,4 @@ async def test_kalshi_empty_bids():
     # Result is now a dict
     assert isinstance(result, dict)
     assert result['total_depth'] == 0.0
+    assert result['total_qty_depth'] == 0.0

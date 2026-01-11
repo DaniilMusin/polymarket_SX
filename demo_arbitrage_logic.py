@@ -11,7 +11,7 @@ from datetime import datetime
 from dataclasses import dataclass
 
 from config import SLIP_BY_DEPTH
-from core.matcher import match, _normalize, _extract_teams
+from core.matcher import match, _normalize, _extract_teams, score_event_match
 from core.processor import process_depth
 
 
@@ -95,6 +95,8 @@ def demonstrate_fuzzy_matching():
         print(f"     Нормализованно: {_normalize(pm.title)}")
         print(f"     SX: {sx.title}")
         print(f"     Нормализованно: {_normalize(sx.title)}")
+        score = score_event_match(pm, sx)
+        print(f"     Match confidence: {score.confidence:.2f} ({score.category})")
 
         # Показываем извлеченные команды для спортивных событий
         if "@" in pm.title or "@" in sx.title:

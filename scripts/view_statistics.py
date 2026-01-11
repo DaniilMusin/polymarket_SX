@@ -146,7 +146,7 @@ def print_detailed(opportunities):
         status = f"{Colors.GREEN}✓ EXECUTED{Colors.END}" if opp['executed'] else f"{Colors.YELLOW}○ FOUND{Colors.END}"
         print(f"{i}. {opp['timestamp'].strftime('%Y-%m-%d %H:%M:%S')} - {status}")
         print(f"   {opp['buy_exchange']} @ {opp['buy_price']:.4f} → {opp['sell_exchange']} @ {opp['sell_price']:.4f}")
-        print(f"   Spread: {opp['spread_bps']:.2f} bps, Size: ${opp['position_size']:.2f}")
+        print(f"   Spread: {opp['spread_bps']:.2f} bps, Qty: {opp['position_size']:.2f}")
         print(f"   Expected PnL: ${opp['expected_pnl']:.2f}", end='')
 
         if opp['actual_pnl'] is not None:

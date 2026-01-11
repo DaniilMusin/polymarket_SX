@@ -13,6 +13,7 @@ Usage:
 
 import asyncio
 import logging
+import os
 import sys
 import argparse
 from pathlib import Path
@@ -21,6 +22,10 @@ from typing import List, Dict
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+# Ensure aiohttp works with aiodns on Windows
+if sys.platform.startswith("win"):
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 from core.logging_config import setup_logging
 
@@ -59,10 +64,48 @@ async def find_polymarket_markets(session: ClientSession, limit: int = 10) -> Li
             data = await resp.json()
 
             markets = []
+            def _normalize_outcome(value):
+                if value is None:
+                    return None
+                normalized = str(value).strip().lower()
+                return normalized if normalized in {"yes", "no"} else None
+
             for market in data[:limit]:
+                token_ids = {}
+                clob_token_ids = market.get("clobTokenIds") or []
+                outcomes = market.get("outcomes") or []
+
+                if isinstance(clob_token_ids, str):
+                    try:
+                        import json
+
+                        clob_token_ids = json.loads(clob_token_ids)
+                    except json.JSONDecodeError:
+                        clob_token_ids = []
+
+                if clob_token_ids and outcomes and len(clob_token_ids) == len(outcomes):
+                    for i, outcome in enumerate(outcomes):
+                        key = _normalize_outcome(outcome)
+                        if key:
+                            token_ids[key] = clob_token_ids[i]
+
+                tokens = market.get("tokens") or []
+                for token in tokens:
+                    key = _normalize_outcome(token.get("outcome", ""))
+                    if not key:
+                        continue
+                    token_id = token.get("token_id") or token.get("id")
+                    if token_id:
+                        token_ids.setdefault(key, token_id)
+
+                yes_token_id = token_ids.get("yes")
+                no_token_id = token_ids.get("no")
+
                 # Extract relevant info
                 market_info = {
                     'id': market.get('condition_id') or market.get('id'),
+                    'yes_token_id': yes_token_id,
+                    'no_token_id': no_token_id,
                     'question': market.get('question', 'Unknown'),
                     'volume': float(market.get('volume', 0)),
                     'liquidity': float(market.get('liquidity', 0)),
@@ -79,7 +122,11 @@ async def find_polymarket_markets(session: ClientSession, limit: int = 10) -> Li
             print(f"{Colors.BOLD}Top Polymarket markets by liquidity:{Colors.END}")
             for i, m in enumerate(markets[:limit], 1):
                 print(f"\n  {i}. {Colors.YELLOW}{m['question'][:70]}...{Colors.END}")
-                print(f"     ID: {Colors.BLUE}{m['id']}{Colors.END}")
+                print(f"     Condition ID: {Colors.BLUE}{m['id']}{Colors.END}")
+                yes_label = m.get("yes_token_id") or "N/A"
+                no_label = m.get("no_token_id") or "N/A"
+                print(f"     Token ID (YES): {Colors.BLUE}{yes_label}{Colors.END}")
+                print(f"     Token ID (NO):  {Colors.BLUE}{no_label}{Colors.END}")
                 print(f"     Liquidity: ${m['liquidity']:,.2f}")
                 print(f"     Volume: ${m['volume']:,.2f}")
                 if m['end_date']:
@@ -151,10 +198,18 @@ async def find_kalshi_markets(session: ClientSession, limit: int = 10) -> List[D
             'limit': limit,
             'status': 'open',
         }
+        headers = {}
+        kalshi_key = os.getenv("KALSHI_API_KEY")
+        if kalshi_key:
+            headers["Authorization"] = f"Bearer {kalshi_key}"
 
-        async with session.get(url, params=params, timeout=30) as resp:
+        async with session.get(url, params=params, headers=headers, timeout=30) as resp:
             if resp.status != 200:
                 print(f"  {Colors.YELLOW}⚠ Kalshi API returned {resp.status}{Colors.END}")
+                if resp.status == 401:
+                    print(
+                        f"  {Colors.YELLOW}Set KALSHI_API_KEY to access market listings{Colors.END}"
+                    )
                 print(f"  {Colors.YELLOW}Visit: https://kalshi.com to browse active markets{Colors.END}")
                 return []
 
@@ -231,9 +286,9 @@ async def main():
         print(f"  Kalshi:     {Colors.GREEN}{len(kalshi_markets)}{Colors.END}")
 
         print(f"\n{Colors.BOLD}NEXT STEPS:{Colors.END}\n")
-        print(f"1. Pick market IDs from the lists above")
+        print(f"1. Pick Polymarket token IDs and SX/Kalshi market IDs from above")
         print(f"2. Test each connector:")
-        print(f"   {Colors.BLUE}python scripts/check_polymarket_connector.py <market_id>{Colors.END}")
+        print(f"   {Colors.BLUE}python scripts/check_polymarket_connector.py <token_id>{Colors.END}")
         print(f"   {Colors.BLUE}python scripts/check_sx_connector.py <market_id>{Colors.END}")
         print(f"   {Colors.BLUE}python scripts/check_kalshi_connector.py <ticker>{Colors.END}")
         print(f"3. Update main.py with working market IDs")

@@ -24,6 +24,10 @@ from aiohttp import ClientSession
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+# Ensure aiohttp works with aiodns on Windows
+if sys.platform.startswith("win"):
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 from connectors import kalshi
 from core.logging_config import setup_logging
 
@@ -53,22 +57,35 @@ async def test_orderbook(market_ticker: str):
             print(f"\n{Colors.GREEN}✓ Successfully fetched orderbook{Colors.END}\n")
 
             print(f"{Colors.BOLD}Orderbook Data:{Colors.END}")
-            # Note: Kalshi prices are in cents (0-100)
-            print(f"  Best Bid:    {Colors.GREEN}{orderbook['best_bid']:.2f}¢{Colors.END} ({orderbook['best_bid']/100:.2%})")
-            print(f"  Best Ask:    {Colors.RED}{orderbook['best_ask']:.2f}¢{Colors.END} ({orderbook['best_ask']/100:.2%})")
-            print(f"  Spread:      {Colors.YELLOW}{(orderbook['best_ask'] - orderbook['best_bid']):.2f}¢ ({(orderbook['best_ask'] - orderbook['best_bid']) / orderbook['best_bid'] * 100:.2f}%){Colors.END}")
-            print(f"  Bid Depth:   {orderbook['bid_depth']:.0f} contracts")
-            print(f"  Ask Depth:   {orderbook['ask_depth']:.0f} contracts")
-            print(f"  Total Depth: {orderbook['total_depth']:.0f} contracts")
+            # Connector returns probabilities (0-1). Convert to cents for display.
+            best_bid = orderbook['best_bid']
+            best_ask = orderbook['best_ask']
+            best_bid_cents = best_bid * 100.0
+            best_ask_cents = best_ask * 100.0
+            spread = best_ask - best_bid
+            spread_cents = spread * 100.0
+            spread_pct = (spread / best_bid * 100.0) if best_bid else 0.0
+
+            print(f"  Best Bid:    {Colors.GREEN}{best_bid_cents:.2f}c{Colors.END} ({best_bid:.2%})")
+            print(f"  Best Ask:    {Colors.RED}{best_ask_cents:.2f}c{Colors.END} ({best_ask:.2%})")
+            print(f"  Spread:      {Colors.YELLOW}{spread_cents:.2f}c ({spread_pct:.2f}%){Colors.END}")
+            print(f"  Bid Depth (qty):        {orderbook['bid_qty_depth']:.0f} contracts")
+            print(f"  Ask Depth (qty):        {orderbook['ask_qty_depth']:.0f} contracts")
+            print(f"  Total Depth (qty):      {orderbook['total_qty_depth']:.0f} contracts")
+            print(f"  Total Depth (notional): ${orderbook['total_notional_depth']:.2f}")
 
             # Display top 5 bids and asks
             print(f"\n{Colors.BOLD}Top 5 Bids:{Colors.END}")
             bids = orderbook.get('bids', [])[:5]
             if bids:
                 for i, bid in enumerate(bids, 1):
-                    price = bid.get('price', 0)
-                    size = bid.get('size', 0)
-                    print(f"  {i}. {Colors.GREEN}{price:.2f}¢{Colors.END} × {size:.0f} contracts")
+                    price_prob = float(bid.get('price', 0))
+                    price_cents = price_prob * 100.0
+                    size = float(bid.get('size', bid.get('quantity', 0)))
+                    print(
+                        f"  {i}. {Colors.GREEN}{price_cents:.2f}c{Colors.END} "
+                        f"({price_prob:.2%}) @ {size:.0f} contracts"
+                    )
             else:
                 print(f"  {Colors.YELLOW}No bids available{Colors.END}")
 
@@ -76,9 +93,13 @@ async def test_orderbook(market_ticker: str):
             asks = orderbook.get('asks', [])[:5]
             if asks:
                 for i, ask in enumerate(asks, 1):
-                    price = ask.get('price', 0)
-                    size = ask.get('size', 0)
-                    print(f"  {i}. {Colors.RED}{price:.2f}¢{Colors.END} × {size:.0f} contracts")
+                    yes_price_prob = float(ask.get('price', 0))
+                    yes_price_cents = yes_price_prob * 100.0
+                    size = float(ask.get('size', ask.get('quantity', 0)))
+                    print(
+                        f"  {i}. {Colors.RED}{yes_price_cents:.2f}c{Colors.END} "
+                        f"({yes_price_prob:.2%}) - {size:.0f} contracts"
+                    )
             else:
                 print(f"  {Colors.YELLOW}No asks available{Colors.END}")
 
@@ -99,14 +120,14 @@ async def test_orderbook(market_ticker: str):
                 checks.append((False, "Bid >= Ask (crossed market!)"))
 
             # Check 3: Has depth
-            if orderbook['total_depth'] > 0:
-                checks.append((True, f"Has liquidity ({orderbook['total_depth']:.0f} contracts)"))
+            if orderbook['total_qty_depth'] > 0:
+                checks.append((True, f"Has liquidity ({orderbook['total_qty_depth']:.0f} contracts)"))
             else:
                 checks.append((False, "No liquidity available"))
 
-            # Check 4: Reasonable prices (0-100 cents for Kalshi)
-            if 0 <= orderbook['best_bid'] <= 100 and 0 <= orderbook['best_ask'] <= 100:
-                checks.append((True, "Prices in valid range (0-100¢)"))
+            # Check 4: Reasonable prices (0-1 probability for Kalshi)
+            if 0 <= orderbook['best_bid'] <= 1 and 0 <= orderbook['best_ask'] <= 1:
+                checks.append((True, "Prices in valid range (0-1 probability)"))
             else:
                 checks.append((False, "Prices outside valid range"))
 
