@@ -65,9 +65,16 @@ class CriticalAlertHandler(logging.Handler):
         if self.file_handler:
             try:
                 self.file_handler.emit(record)
+                self.file_handler.flush()
             except Exception:
                 # Don't let logging errors crash the application
                 self.handleError(record)
+            finally:
+                try:
+                    # Release file handle on Windows to avoid temp dir cleanup failures.
+                    self.file_handler.close()
+                except Exception:
+                    pass
         else:
             # Fallback: just print to stderr
             try:

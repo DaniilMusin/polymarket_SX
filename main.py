@@ -1,15 +1,22 @@
 import asyncio
 import logging
+import os
+import sys
 from aiohttp import ClientSession
 
 from core.logging_config import setup_logging
 from core.metrics import init_metrics
+from core.auto_pipeline import run_auto_pipeline
 from core.processor import process_arbitrage
 from core.trader import execute_arbitrage_trade
 from core.statistics import get_statistics_collector
 from core.validation import validate_all
 from connectors import polymarket, sx, kalshi  # noqa: F401
 import config
+
+# Ensure aiohttp works with aiodns on Windows
+if sys.platform.startswith("win"):
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 
 async def main() -> None:
@@ -26,7 +33,7 @@ async def main() -> None:
         validate_all()
     except RuntimeError as e:
         logging.error("=" * 80)
-        logging.error("❌ CONFIGURATION VALIDATION FAILED")
+        logging.error("CONFIGURATION VALIDATION FAILED")
         logging.error("=" * 80)
         logging.error(str(e))
         logging.error("=" * 80)
@@ -35,7 +42,7 @@ async def main() -> None:
         return
 
     logging.info("=" * 80)
-    logging.info("🚀 Starting Polymarket-SX Arbitrage Bot")
+    logging.info("Starting Polymarket-SX Arbitrage Bot")
     logging.info("=" * 80)
     logging.info(
         "Mode: %s", "REAL TRADING" if config.ENABLE_REAL_TRADING else "SIMULATION"
@@ -50,7 +57,7 @@ async def main() -> None:
     # ==================================================================================
     if config.ENABLE_REAL_TRADING:
         logging.warning("=" * 80)
-        logging.warning("⚠️  REAL TRADING MODE ENABLED")
+        logging.warning("REAL TRADING MODE ENABLED")
         logging.warning("=" * 80)
         logging.warning("")
         logging.warning("This will execute REAL orders on exchanges with REAL money.")
@@ -71,7 +78,7 @@ async def main() -> None:
 
         if answer != "YES":
             logging.error("=" * 80)
-            logging.error("❌ REAL TRADING CANCELLED")
+            logging.error("REAL TRADING CANCELLED")
             logging.error("=" * 80)
             logging.error(f"You entered: '{answer}'")
             logging.error("Required: 'YES' (all capitals)")
@@ -83,7 +90,7 @@ async def main() -> None:
             return
 
         logging.info("=" * 80)
-        logging.info("✓ REAL TRADING CONFIRMED - Proceeding with live execution")
+        logging.info("REAL TRADING CONFIRMED - Proceeding with live execution")
         logging.info("=" * 80)
 
     init_metrics()
@@ -91,6 +98,17 @@ async def main() -> None:
 
     try:
         async with ClientSession() as session:
+            if config.AUTO_MATCH_ENABLED:
+                result = await run_auto_pipeline(
+                    session,
+                    dry_run=not config.ENABLE_REAL_TRADING,
+                    pm_api_key=os.getenv("POLYMARKET_API_KEY"),
+                    sx_api_key=os.getenv("SX_API_KEY"),
+                    kalshi_api_key=os.getenv("KALSHI_API_KEY"),
+                )
+                logging.info("Auto-match pipeline completed: %s", result)
+                return
+
             # ===============================================================================
             # CRITICAL: Replace with REAL market IDs before running!
             # ===============================================================================
@@ -104,27 +122,35 @@ async def main() -> None:
             #   python scripts/check_sx_connector.py <market_id>
             #
             # Example real IDs (verify these are current!):
-            #   Polymarket: condition_id from https://gamma-api.polymarket.com/markets
+            #   Polymarket condition_id from https://gamma-api.polymarket.com/markets
+            #   Polymarket token_id (YES outcome) from same Gamma response
             #   SX: market_id from https://api.sx.bet/markets
             # ===============================================================================
             pm_market_id = "REPLACE_WITH_REAL_POLYMARKET_MARKET_ID"
+            pm_token_id = "REPLACE_WITH_REAL_POLYMARKET_TOKEN_ID"
             sx_market_id = "REPLACE_WITH_REAL_SX_MARKET_ID"
 
             # Check if market IDs were updated
-            if "REPLACE" in pm_market_id or "REPLACE" in sx_market_id:
+            if (
+                "REPLACE" in pm_market_id
+                or "REPLACE" in pm_token_id
+                or "REPLACE" in sx_market_id
+            ):
                 logging.error("=" * 80)
-                logging.error("❌ CRITICAL ERROR: Market IDs not configured!")
+                logging.error("CRITICAL ERROR: Market IDs not configured!")
                 logging.error("=" * 80)
                 logging.error("")
-                logging.error("You must replace placeholder market IDs with real ones.")
+                logging.error("You must replace placeholder IDs with real ones.")
                 logging.error("")
                 logging.error("Steps:")
                 logging.error("1. Run: python scripts/find_markets.py")
                 logging.error("2. Pick market IDs with high liquidity")
                 logging.error(
-                    "3. Test: python scripts/check_polymarket_connector.py <id>"
+                    "3. Test: python scripts/check_polymarket_connector.py <token_id>"
                 )
-                logging.error("4. Update pm_market_id and sx_market_id in main.py")
+                logging.error(
+                    "4. Update pm_market_id, pm_token_id, and sx_market_id in main.py"
+                )
                 logging.error("")
                 logging.error("=" * 80)
                 return
@@ -133,7 +159,7 @@ async def main() -> None:
                 # Get full orderbooks with prices
                 from core.processor import validate_orderbook
 
-                pm_book = await polymarket.orderbook_depth(session, pm_market_id)
+                pm_book = await polymarket.orderbook_depth(session, pm_token_id)
                 # Validate orderbook format before accessing keys
                 if not validate_orderbook(pm_book):
                     logging.error("Invalid Polymarket orderbook format")
@@ -170,7 +196,7 @@ async def main() -> None:
             )
 
             if opportunity:
-                logging.info("🎯 Arbitrage opportunity found!")
+                logging.info("Arbitrage opportunity found!")
                 logging.info(
                     "   Buy on %s @ %.4f",
                     opportunity["buy_exchange"],
@@ -194,6 +220,7 @@ async def main() -> None:
                         opportunity,
                         pm_market_id,
                         sx_market_id,
+                        pm_token_id=pm_token_id,
                         dry_run=not config.ENABLE_REAL_TRADING,
                     )
                     logging.info("Trade execution result: %s", result["status"])
@@ -216,12 +243,12 @@ async def main() -> None:
                 logging.info("No arbitrage opportunity found")
 
             logging.info("=" * 80)
-            logging.info("✅ Bot cycle completed successfully")
+            logging.info("Bot cycle completed successfully")
             logging.info("=" * 80)
 
     except Exception as exc:
         logging.error("=" * 80)
-        logging.error("❌ Bot terminated with error")
+        logging.error("Bot terminated with error")
         logging.error("=" * 80)
         logging.error("Unexpected error in main: %s", exc, exc_info=True)
         raise

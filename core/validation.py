@@ -30,7 +30,7 @@ def validate_risk_config() -> None:
                 f"MAX_POSITION_SIZE={config.MAX_POSITION_SIZE} is high. "
                 "This is OK for simulation (dry-run), but would be risky for real trading."
             )
-        logger.info("✓ Simulation mode - risk checks are warnings only")
+        logger.info("Simulation mode - risk checks are warnings only")
         return
 
     # ========================================================================
@@ -47,39 +47,39 @@ def validate_risk_config() -> None:
     if config.MIN_PROFIT_BPS < 50:
         errors.append(
             f"MIN_PROFIT_BPS={config.MIN_PROFIT_BPS} bps is TOO LOW for real trading.\n"
-            f"  → Requirement: MIN_PROFIT_BPS >= 50 bps (0.5%)\n"
-            f"  → Recommended: MIN_PROFIT_BPS >= 100 bps (1.0%)\n"
-            f"  → Reason: Need margin for fees, slippage, and execution delays"
+            f"  -> Requirement: MIN_PROFIT_BPS >= 50 bps (0.5%)\n"
+            f"  -> Recommended: MIN_PROFIT_BPS >= 100 bps (1.0%)\n"
+            f"  -> Reason: Need margin for fees, slippage, and execution delays"
         )
 
     # Check #2: MAX_POSITION_SIZE must be conservative for initial trading
     if config.MAX_POSITION_SIZE > 100:
         errors.append(
             f"MAX_POSITION_SIZE=${config.MAX_POSITION_SIZE} is TOO HIGH for real trading.\n"
-            f"  → Requirement: MAX_POSITION_SIZE <= $100 for first runs\n"
-            f"  → Recommended: Start with $10-50\n"
-            f"  → Reason: Limit exposure until you've validated strategy with real data"
+            f"  -> Requirement: MAX_POSITION_SIZE <= $100 for first runs\n"
+            f"  -> Recommended: Start with $10-50\n"
+            f"  -> Reason: Limit exposure until you've validated strategy with real data"
         )
 
     # Check #3: MAX_EXCHANGE_EXPOSURE should be reasonable
     if config.MAX_EXCHANGE_EXPOSURE > 500:
         errors.append(
             f"MAX_EXCHANGE_EXPOSURE=${config.MAX_EXCHANGE_EXPOSURE} is TOO HIGH.\n"
-            f"  → Requirement: MAX_EXCHANGE_EXPOSURE <= $500 for initial trading\n"
-            f"  → Reason: Limit total risk per exchange"
+            f"  -> Requirement: MAX_EXCHANGE_EXPOSURE <= $500 for initial trading\n"
+            f"  -> Reason: Limit total risk per exchange"
         )
 
     # Check #4: Warn about MAX_POSITION_PERCENT
     if config.MAX_POSITION_PERCENT > 0.2:
         errors.append(
             f"MAX_POSITION_PERCENT={config.MAX_POSITION_PERCENT} (20%+) is aggressive.\n"
-            f"  → Recommended: <= 0.1 (10%)\n"
-            f"  → Reason: Don't risk too much of available balance on single trade"
+            f"  -> Recommended: <= 0.1 (10%)\n"
+            f"  -> Reason: Don't risk too much of available balance on single trade"
         )
 
     # If any errors, refuse to start
     if errors:
-        logger.error("❌ RISK VALIDATION FAILED")
+        logger.error("RISK VALIDATION FAILED")
         logger.error("")
         for i, error in enumerate(errors, 1):
             logger.error(f"ERROR #{i}:")
@@ -102,7 +102,7 @@ def validate_risk_config() -> None:
         )
 
     # All checks passed
-    logger.info("✓ All risk checks PASSED")
+    logger.info("All risk checks PASSED")
     logger.info(f"  MIN_PROFIT_BPS: {config.MIN_PROFIT_BPS} bps")
     logger.info(f"  MAX_POSITION_SIZE: ${config.MAX_POSITION_SIZE}")
     logger.info(f"  MAX_EXCHANGE_EXPOSURE: ${config.MAX_EXCHANGE_EXPOSURE}")
@@ -121,7 +121,7 @@ def validate_wallet_config() -> None:
     logger = logging.getLogger(__name__)
 
     if not config.ENABLE_REAL_TRADING:
-        logger.info("✓ Simulation mode - wallet validation skipped")
+        logger.info("Simulation mode - wallet validation skipped")
         return
 
     logger.info("Validating wallet and API configuration...")
@@ -156,7 +156,7 @@ def validate_wallet_config() -> None:
 
     # If any errors, refuse to start
     if errors:
-        logger.error("❌ WALLET/API VALIDATION FAILED")
+        logger.error("WALLET/API VALIDATION FAILED")
         logger.error("")
         for i, error in enumerate(errors, 1):
             logger.error(f"ERROR #{i}: {error}")
@@ -168,7 +168,7 @@ def validate_wallet_config() -> None:
             "Wallet/API validation failed. Cannot run real trading without credentials."
         )
 
-    logger.info("✓ Wallet validation PASSED")
+    logger.info("Wallet validation PASSED")
     logger.info(f"  Configured exchanges: {', '.join(configured_exchanges)}")
 
 

@@ -1,0 +1,11 @@
+[
+  {
+    "market_id": "0xYOUR_SX_MARKET_ID",
+    "title": "Will Example Event X occur by 2025-12-31?",
+    "description": "Resolves YES if Example Event X happens by 2025-12-31 23:59 UTC.",
+    "outcomes": ["yes", "no"],
+    "start_date": "2025-01-01T00:00:00Z",
+    "liquidity": 5000,
+    "volume": 12000
+  }
+]

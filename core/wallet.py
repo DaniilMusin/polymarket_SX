@@ -156,8 +156,8 @@ class Wallet:
         logging.warning(
             "Created new wallet: %s (SAVE THE PRIVATE KEY SECURELY!)", account.address
         )
-        logging.warning("⚠️  PRIVATE KEY: %s", private_key_hex)
-        logging.warning("⚠️  SAVE THIS KEY IMMEDIATELY! IT WILL NOT BE SHOWN AGAIN!")
+        logging.warning("PRIVATE KEY: %s", private_key_hex)
+        logging.warning("SAVE THIS KEY IMMEDIATELY! IT WILL NOT BE SHOWN AGAIN!")
         return Wallet(private_key=private_key_hex)
 
 

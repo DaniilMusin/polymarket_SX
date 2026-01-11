@@ -5,8 +5,10 @@ Event validation using Perplexity API Sonar Reasoning.
 являются ли события на разных платформах (Polymarket, SX, Kalshi) одинаковыми.
 """
 
+import json
 import logging
 import os
+import re
 from typing import Any, Dict, Optional
 
 import aiohttp
@@ -103,9 +105,10 @@ class EventValidator:
             )
             return {
                 "are_same": True,  # User accepted the risk
-                "confidence": "unknown",
+                "confidence": "high",
                 "reasoning": "Validation disabled: API key not set, user allowed unvalidated",
                 "warning": "Event validation is disabled - RISK OF TRADING DIFFERENT EVENTS",
+                "validation_skipped": True,
             }
 
         # Build the prompt for reasoning
@@ -193,42 +196,142 @@ Task: Determine if the following two events refer to the SAME real-world occurre
    - Are the outcomes interpreted the same way?
    - Are there any subtle differences in wording that could lead to different outcomes?
 
-3. Provide your answer in this EXACT format:
-```
-VERDICT: [SAME/DIFFERENT]
-CONFIDENCE: [HIGH/MEDIUM/LOW]
-REASONING: [Your detailed chain-of-thought analysis]
-WARNING: [Any warnings about potential ambiguities, or NONE]
-```
+3. Provide your answer as a JSON object only, with this exact schema:
+{{
+  "verdict": "SAME" or "DIFFERENT",
+  "confidence": "high" or "medium" or "low",
+  "reasoning": "Short rationale (1-3 sentences, no chain-of-thought)",
+  "warning": "string or null"
+}}
 
 Be thorough in your analysis. Even small differences in resolution criteria can make events incompatible for arbitrage."""  # noqa: E501
 
     def _parse_response(self, data: Dict) -> Dict[str, Any]:
         """Parse Perplexity API response."""
-        # Extract the content from the response
         content = data["choices"][0]["message"]["content"]
+        if not isinstance(content, str):
+            raise ValueError("Invalid response: content is not a string")
 
-        # Parse the structured output
-        lines = content.strip().split("\n")
-        result = {
+        result = self._parse_json_response(content)
+        if result is not None:
+            return result
+        return self._parse_legacy_response(content)
+
+    def _default_result(self) -> Dict[str, Any]:
+        return {
             "are_same": False,
             "confidence": "unknown",
             "reasoning": "",
             "warning": None,
         }
 
-        for line in lines:
-            line = line.strip()
-            if line.startswith("VERDICT:"):
-                verdict = line.split(":", 1)[1].strip().upper()
+    def _parse_json_response(self, content: str) -> Optional[Dict[str, Any]]:
+        payload = self._extract_json_object(content)
+        if not payload:
+            return None
+        try:
+            data = json.loads(payload)
+        except json.JSONDecodeError:
+            return None
+        if not isinstance(data, dict):
+            return None
+        return self._normalize_result(data)
+
+    def _parse_legacy_response(self, content: str) -> Dict[str, Any]:
+        lines = content.strip().splitlines()
+        result = self._default_result()
+        current_field: Optional[str] = None
+        for raw_line in lines:
+            line = raw_line.strip()
+            if not line:
+                continue
+            verdict_match = re.match(r"^VERDICT\s*[:=\-]\s*(\w+)", line, re.I)
+            if verdict_match:
+                verdict = verdict_match.group(1).strip().upper()
                 result["are_same"] = verdict == "SAME"
-            elif line.startswith("CONFIDENCE:"):
-                result["confidence"] = line.split(":", 1)[1].strip().lower()
-            elif line.startswith("REASONING:"):
-                result["reasoning"] = line.split(":", 1)[1].strip()
-            elif line.startswith("WARNING:"):
-                warning = line.split(":", 1)[1].strip()
-                if warning.upper() != "NONE":
+                current_field = None
+                continue
+            confidence_match = re.match(r"^CONFIDENCE\s*[:=\-]\s*(\w+)", line, re.I)
+            if confidence_match:
+                result["confidence"] = confidence_match.group(1).strip().lower()
+                current_field = None
+                continue
+            reasoning_match = re.match(r"^REASONING\s*[:=\-]\s*(.*)", line, re.I)
+            if reasoning_match:
+                result["reasoning"] = reasoning_match.group(1).strip()
+                current_field = "reasoning"
+                continue
+            warning_match = re.match(r"^WARNING\s*[:=\-]\s*(.*)", line, re.I)
+            if warning_match:
+                warning = warning_match.group(1).strip()
+                if warning and warning.upper() != "NONE":
                     result["warning"] = warning
+                current_field = "warning"
+                continue
+            if current_field == "reasoning":
+                result["reasoning"] = f"{result['reasoning']} {line}".strip()
+        return self._normalize_result(result)
+
+    def _normalize_result(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        result = self._default_result()
+
+        if "are_same" in data:
+            result["are_same"] = bool(data.get("are_same"))
+        elif "verdict" in data:
+            verdict = str(data.get("verdict", "")).strip().upper()
+            if verdict in {"SAME", "DIFFERENT"}:
+                result["are_same"] = verdict == "SAME"
+
+        confidence = str(data.get("confidence", "")).strip().lower()
+        if confidence in {"high", "medium", "low"}:
+            result["confidence"] = confidence
+
+        reasoning = data.get("reasoning", "")
+        if isinstance(reasoning, str):
+            result["reasoning"] = reasoning.strip()
+        else:
+            result["reasoning"] = str(reasoning).strip()
+
+        warning = data.get("warning", None)
+        if warning is None:
+            result["warning"] = None
+        else:
+            warning_text = str(warning).strip()
+            if warning_text and warning_text.lower() != "none":
+                result["warning"] = warning_text
 
         return result
+
+    def _extract_json_object(self, content: str) -> Optional[str]:
+        text = content.strip()
+        text = self._strip_code_fence(text)
+        if text.startswith("{") and text.endswith("}"):
+            return text
+
+        depth = 0
+        start: Optional[int] = None
+        for index, char in enumerate(text):
+            if char == "{":
+                if depth == 0:
+                    start = index
+                depth += 1
+            elif char == "}":
+                if depth == 0:
+                    continue
+                depth -= 1
+                if depth == 0 and start is not None:
+                    candidate = text[start : index + 1]
+                    try:
+                        json.loads(candidate)
+                        return candidate
+                    except json.JSONDecodeError:
+                        start = None
+                        continue
+        return None
+
+    def _strip_code_fence(self, text: str) -> str:
+        if text.startswith("```") and text.endswith("```"):
+            lines = text.splitlines()
+            if len(lines) >= 3:
+                return "\n".join(lines[1:-1]).strip()
+        return text

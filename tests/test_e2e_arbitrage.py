@@ -11,13 +11,15 @@ These tests simulate the complete arbitrage flow:
 All tests use mocked exchange APIs to avoid real orders.
 """
 
-import pytest
 import asyncio
+import os
+import sys
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 from aiohttp import ClientSession
 
-import sys
-sys.path.insert(0, '/home/user/polymarket_SX')
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from core.processor import find_arbitrage_opportunity
 from core.trader import execute_arbitrage_trade, TradeExecutionError
@@ -57,9 +59,15 @@ def good_orderbooks():
     pm_book = {
         'best_bid': 0.45,
         'best_ask': 0.47,
-        'bid_depth': 1000.0,
-        'ask_depth': 1000.0,
-        'total_depth': 2000.0,
+        'bid_depth': 450.0,
+        'ask_depth': 470.0,
+        'total_depth': 920.0,
+        'bid_qty_depth': 1000.0,
+        'ask_qty_depth': 1000.0,
+        'total_qty_depth': 2000.0,
+        'bid_notional_depth': 450.0,
+        'ask_notional_depth': 470.0,
+        'total_notional_depth': 920.0,
         'bids': [{'price': 0.45, 'size': 1000.0}],
         'asks': [{'price': 0.47, 'size': 1000.0}],
     }
@@ -67,9 +75,15 @@ def good_orderbooks():
     sx_book = {
         'best_bid': 0.53,  # Higher bid - we can sell here
         'best_ask': 0.55,
-        'bid_depth': 1000.0,
-        'ask_depth': 1000.0,
-        'total_depth': 2000.0,
+        'bid_depth': 530.0,
+        'ask_depth': 550.0,
+        'total_depth': 1080.0,
+        'bid_qty_depth': 1000.0,
+        'ask_qty_depth': 1000.0,
+        'total_qty_depth': 2000.0,
+        'bid_notional_depth': 530.0,
+        'ask_notional_depth': 550.0,
+        'total_notional_depth': 1080.0,
         'bids': [{'price': 0.53, 'size': 1000.0}],
         'asks': [{'price': 0.55, 'size': 1000.0}],
     }
@@ -93,7 +107,9 @@ async def test_e2e_successful_arbitrage(mock_wallet, good_orderbooks):
     opportunity = find_arbitrage_opportunity(
         pm_book, sx_book,
         pm_market_id="pm-test-market",
-        sx_market_id="sx-test-market"
+        sx_market_id="sx-test-market",
+        pm_outcome="yes",
+        sx_outcome="yes",
     )
 
     assert opportunity is not None
@@ -105,13 +121,13 @@ async def test_e2e_successful_arbitrage(mock_wallet, good_orderbooks):
     successful_pm_response = {
         'status': 'FILLED',
         'orderID': 'pm-order-123',
-        'size_matched': opportunity['position_size'],
+        'size_matched': opportunity['buy_notional'],
     }
 
     successful_sx_response = {
         'state': 'FILLED',
         'orderId': 'sx-order-456',
-        'filled_size': opportunity['position_size'],
+        'filled_size': opportunity['sell_notional'],
     }
 
     # Mock the order placement functions
@@ -161,7 +177,7 @@ async def test_e2e_successful_arbitrage(mock_wallet, good_orderbooks):
     pm_balance = balance_mgr.get_balance('polymarket')
     sx_balance = balance_mgr.get_balance('sx')
 
-    # Initial balance is $10, position_size should be small
+    # Initial balance is $10, notional per leg should be small
     assert pm_balance < 10.0
     assert sx_balance < 10.0
 
@@ -191,7 +207,9 @@ async def test_e2e_partial_fill_scenario(mock_wallet, good_orderbooks):
     opportunity = find_arbitrage_opportunity(
         pm_book, sx_book,
         pm_market_id="pm-test-market",
-        sx_market_id="sx-test-market"
+        sx_market_id="sx-test-market",
+        pm_outcome="yes",
+        sx_outcome="yes",
     )
 
     assert opportunity is not None
@@ -200,7 +218,7 @@ async def test_e2e_partial_fill_scenario(mock_wallet, good_orderbooks):
     successful_pm_response = {
         'status': 'FILLED',
         'orderID': 'pm-order-123',
-        'size_matched': opportunity['position_size'],
+        'size_matched': opportunity['buy_notional'],
     }
 
     # Sell order returns CANCELLED (IOC didn't fully fill)
@@ -273,7 +291,9 @@ async def test_e2e_both_orders_fail(mock_wallet, good_orderbooks):
     opportunity = find_arbitrage_opportunity(
         pm_book, sx_book,
         pm_market_id="pm-test-market",
-        sx_market_id="sx-test-market"
+        sx_market_id="sx-test-market",
+        pm_outcome="yes",
+        sx_outcome="yes",
     )
 
     # Both orders fail
@@ -324,11 +344,21 @@ async def test_e2e_insufficient_balance(good_orderbooks):
     opportunity = find_arbitrage_opportunity(
         pm_book, sx_book,
         pm_market_id="pm-test-market",
-        sx_market_id="sx-test-market"
+        sx_market_id="sx-test-market",
+        pm_outcome="yes",
+        sx_outcome="yes",
     )
 
     # Force very large position size
     opportunity['position_size'] = 1000.0  # Much larger than $10 balance
+    opportunity['qty'] = 1000.0
+
+    balance_manager = get_balance_manager()
+    with balance_manager._lock:
+        balance_manager._balances["polymarket"] = 1.0
+        balance_manager._balances["sx"] = 1.0
+    initial_pm_balance = balance_manager.get_balance("polymarket")
+    initial_sx_balance = balance_manager.get_balance("sx")
 
     with patch('core.trader.place_order_polymarket', new_callable=AsyncMock) as mock_pm_order, \
          patch('core.trader.place_order_sx', new_callable=AsyncMock) as mock_sx_order:
@@ -367,8 +397,8 @@ async def test_e2e_insufficient_balance(good_orderbooks):
 
     # Verify balances unchanged
     balance_mgr = get_balance_manager()
-    assert balance_mgr.get_balance('polymarket') == 10.0
-    assert balance_mgr.get_balance('sx') == 10.0
+    assert balance_mgr.get_balance('polymarket') == initial_pm_balance
+    assert balance_mgr.get_balance('sx') == initial_sx_balance
     assert balance_mgr.get_locked_balance('polymarket') == 0.0
     assert balance_mgr.get_locked_balance('sx') == 0.0
 

@@ -16,7 +16,7 @@ from decimal import Decimal
 from aiohttp import ClientSession
 import aiohttp
 
-from config import API_TIMEOUT_TOTAL, API_TIMEOUT_CONNECT
+from config import API_TIMEOUT_TOTAL, API_TIMEOUT_CONNECT, KALSHI_CONTRACT_COLLATERAL
 from core.metrics import g_trades, update_pnl
 from core.wallet import Wallet, PolymarketOrderSigner, WalletError
 from core.exchange_balances import get_balance_manager, InsufficientBalanceError
@@ -27,6 +27,31 @@ from core.alert_manager import send_critical_alert
 
 class TradeExecutionError(Exception):
     """Raised when trade execution fails."""
+
+
+def _normalize_kalshi_price(price: float) -> float:
+    try:
+        value = float(price)
+    except (TypeError, ValueError):
+        return 0.0
+    if value > 1.0:
+        value /= 100.0
+    return max(0.0, min(1.0, value))
+
+
+def _kalshi_cost_per_qty(price: float, side: str, contract_side: str = "yes") -> float:
+    price = _normalize_kalshi_price(price)
+    side = (side or "buy").lower()
+    base = price if side == "buy" else (1.0 - price)
+    return max(0.0, base) * KALSHI_CONTRACT_COLLATERAL
+
+
+def _cost_per_qty(
+    exchange: str, price: float, side: str, contract_side: str = "yes"
+) -> float:
+    if exchange.lower() == "kalshi":
+        return _kalshi_cost_per_qty(price, side, contract_side=contract_side)
+    return float(price)
 
 
 def check_ioc_order_filled(
@@ -287,7 +312,7 @@ async def place_order_polymarket(
                         f"No orderID in response. Response: {result}"
                     )
 
-                logging.info("✅ Polymarket order placed: %s", order_id)
+                logging.info("Polymarket order placed: %s", order_id)
 
                 # Check if IOC order was actually filled (not just accepted)
                 # Pass size to check for partial fills
@@ -442,7 +467,7 @@ async def place_order_sx(
                         f"No orderId in response. Response: {result}"
                     )
 
-                logging.info("✅ SX order placed: %s", order_id)
+                logging.info("SX order placed: %s", order_id)
 
                 # Check if IOC order was actually filled (not just accepted)
                 # Pass size to check for partial fills
@@ -477,6 +502,7 @@ async def place_order_kalshi(
     price: float,
     size: int,  # Number of contracts
     api_key: Optional[str] = None,
+    contract_side: str = "yes",  # 'yes' or 'no'
     order_type: str = "IOC",  # 'IOC' for immediate execution or 'LIMIT'
     _skip_balance_check: bool = False,  # Internal: skip balance check if already reserved
 ) -> Dict:
@@ -489,9 +515,10 @@ async def place_order_kalshi(
         session: aiohttp ClientSession
         market_id: Market ID
         side: 'buy' or 'sell'
-        price: Order price in cents (0-100)
+        price: Order price (contract-side probability 0-1 or cents 0-100)
         size: Number of contracts
         api_key: API key for authentication
+        contract_side: Contract side ('yes' or 'no')
         order_type: 'IOC' for immediate execution (default) or 'LIMIT'
 
     Returns:
@@ -518,8 +545,9 @@ async def place_order_kalshi(
         if not _skip_balance_check:
             balance_manager = get_balance_manager()
             # For Kalshi, size is number of contracts, convert to USD estimate
-            # Each contract costs up to $1, so use size as USD amount
-            usd_size = float(size)
+            usd_size = float(size) * _cost_per_qty(
+                "kalshi", price, side, contract_side=contract_side
+            )
             if not balance_manager.check_balance("kalshi", usd_size):
                 available = balance_manager.get_balance("kalshi")
                 raise InsufficientBalanceError(
@@ -527,29 +555,39 @@ async def place_order_kalshi(
                     f"required ${usd_size:.2f}, available ${available:.2f}"
                 )
         # Kalshi uses standard REST API with authentication
-        # Map order type to Kalshi terminology
-        if order_type == "IOC":
-            kalshi_type = "market"  # Market orders execute immediately
-        else:
-            kalshi_type = "limit"  # Limit orders wait in orderbook
+        # Use limit orders with explicit price to avoid market+price conflicts.
+        kalshi_type = "limit"
 
+        contract_side = contract_side.lower()
+        if contract_side not in {"yes", "no"}:
+            raise ValueError(f"Kalshi contract_side must be 'yes' or 'no', got {contract_side}")
+
+        if not isinstance(price, (int, float)):
+            raise ValueError("Kalshi price must be numeric")
+        if float(price) < 0 or float(price) > 100:
+            raise ValueError(f"Kalshi price out of range: {price}")
+        price_prob = _normalize_kalshi_price(price)
+        price_cents = int(round(price_prob * 100))
+
+        price_field = "yes_price" if contract_side == "yes" else "no_price"
         order_payload = {
             "ticker": market_id,
             "action": "buy" if side.lower() == "buy" else "sell",
-            "side": "yes",  # Assuming yes side
-            "yes_price": int(price),  # Price in cents
+            "side": contract_side,
             "count": size,
             "type": kalshi_type,
         }
+        order_payload[price_field] = price_cents  # Price in cents
 
         # Log order type for monitoring
         logging.info(
-            "Placing %s (%s) %s order on Kalshi: %s @ %.0f cents, count: %d",
+            "Placing %s (%s) %s %s order on Kalshi: %s @ %d cents, count: %d",
             order_type,
             kalshi_type,
             side.upper(),
+            contract_side.upper(),
             market_id,
-            price,
+            price_cents,
             size,
         )
 
@@ -585,7 +623,7 @@ async def place_order_kalshi(
                         f"No order_id in response. Response: {result}"
                     )
 
-                logging.info("✅ Kalshi order placed: %s", order_id)
+                logging.info("Kalshi order placed: %s", order_id)
 
                 # Check if IOC order was actually filled (not just accepted)
                 # Pass size to check for partial fills
@@ -616,13 +654,16 @@ async def place_order_kalshi(
 async def execute_arbitrage_trade(
     session: ClientSession,
     opportunity: Dict,
-    pm_market_id: str,
-    sx_market_id: str,
+    pm_market_id: Optional[str],
+    sx_market_id: Optional[str],
     pm_token_id: Optional[str] = None,
     wallet: Optional[Wallet] = None,
     pm_api_key: Optional[str] = None,
     sx_api_key: Optional[str] = None,
     dry_run: bool = True,
+    kalshi_market_id: Optional[str] = None,
+    kalshi_api_key: Optional[str] = None,
+    kalshi_side: str = "yes",
 ) -> Dict:
     """
     Execute an arbitrage trade across two exchanges.
@@ -630,13 +671,16 @@ async def execute_arbitrage_trade(
     Args:
         session: aiohttp ClientSession
         opportunity: Arbitrage opportunity from find_arbitrage_opportunity()
-        pm_market_id: Polymarket market ID
-        sx_market_id: SX market ID
+        pm_market_id: Polymarket market ID (when trading Polymarket)
+        sx_market_id: SX market ID (when trading SX)
         pm_token_id: Polymarket token ID (required for real trading)
         wallet: Wallet for signing orders
         pm_api_key: Polymarket API key
         sx_api_key: SX API key
         dry_run: If True, simulate only (don't actually place orders)
+        kalshi_market_id: Kalshi market ticker (required when trading Kalshi)
+        kalshi_api_key: Kalshi API key
+        kalshi_side: Kalshi contract side ('yes' or 'no')
 
     Returns:
         Trade execution result dictionary
@@ -665,7 +709,7 @@ async def execute_arbitrage_trade(
     sell_exchange = opportunity["sell_exchange"]
     buy_price = opportunity["buy_price"]
     sell_price = opportunity["sell_price"]
-    size = opportunity["position_size"]
+    qty = opportunity.get("qty", opportunity["position_size"])
 
     # Validate types
     if not isinstance(buy_exchange, str) or not isinstance(sell_exchange, str):
@@ -684,8 +728,8 @@ async def execute_arbitrage_trade(
             f"sell_price={type(sell_price).__name__}"
         )
 
-    if not isinstance(size, (int, float)):
-        raise ValueError(f"Size must be numeric: size={type(size).__name__}")
+    if not isinstance(qty, (int, float)):
+        raise ValueError(f"Size must be numeric: size={type(qty).__name__}")
 
     # Validate exchange names
     valid_exchanges = {"polymarket", "sx", "kalshi"}
@@ -712,8 +756,12 @@ async def execute_arbitrage_trade(
         )
 
     # Validate size
-    if size <= 0:
-        raise ValueError(f"Invalid position size: {size}. Size must be positive.")
+    if qty <= 0:
+        raise ValueError(f"Invalid position size: {qty}. Size must be positive.")
+    if "kalshi" in {buy_exchange_lower, sell_exchange_lower}:
+        qty = float(int(qty))
+        if qty < 1:
+            raise ValueError("Kalshi order size must be at least 1 contract")
 
     # Validate prices
     if buy_price <= 0 or sell_price <= 0:
@@ -730,15 +778,113 @@ async def execute_arbitrage_trade(
         )
     # ======================== END VALIDATION ========================
 
+    market_ids = {
+        "polymarket": pm_market_id,
+        "sx": sx_market_id,
+        "kalshi": kalshi_market_id,
+    }
+    buy_market_id = market_ids.get(buy_exchange_lower)
+    sell_market_id = market_ids.get(sell_exchange_lower)
+
     trade_logger = get_trade_logger()
     logging.info(
-        "Executing arbitrage trade: Buy %s @ %.4f, Sell %s @ %.4f, Size: $%.2f",
+        "Executing arbitrage trade: Buy %s @ %.4f, Sell %s @ %.4f, Qty: %.4f",
         buy_exchange,
         buy_price,
         sell_exchange,
         sell_price,
-        size,
+        qty,
     )
+
+    def _normalize_outcome(value: Optional[str]) -> Optional[str]:
+        if not value:
+            return None
+        normalized = str(value).strip().lower()
+        if normalized in {"yes", "no"}:
+            return normalized
+        return None
+
+    def _resolve_order_params(
+        exchange: str, side: str, price: float, outcome: Optional[str]
+    ) -> tuple[str, float]:
+        if exchange == "sx" and outcome == "no":
+            return ("sell" if side == "buy" else "buy", 1.0 - price)
+        return side, price
+
+    buy_outcome = _normalize_outcome(opportunity.get("buy_outcome"))
+    sell_outcome = _normalize_outcome(opportunity.get("sell_outcome"))
+    pm_outcome = _normalize_outcome(opportunity.get("pm_outcome"))
+
+    if "polymarket" in {buy_exchange_lower, sell_exchange_lower}:
+        expected_pm_outcome = (
+            buy_outcome if buy_exchange_lower == "polymarket" else sell_outcome
+        )
+        if not expected_pm_outcome:
+            raise TradeExecutionError(
+                "Polymarket outcome missing in opportunity; refusing to trade."
+            )
+        if pm_outcome and pm_outcome != expected_pm_outcome:
+            raise TradeExecutionError(
+                f"Polymarket outcome mismatch: expected {expected_pm_outcome}, got {pm_outcome}"
+            )
+        expected_pm_token_id = opportunity.get("pm_token_id")
+        if (
+            expected_pm_token_id
+            and pm_token_id
+            and expected_pm_token_id != pm_token_id
+        ):
+            raise TradeExecutionError(
+                "Polymarket token_id mismatch; refusing to trade."
+            )
+
+    kalshi_contract_side = opportunity.get("kalshi_side")
+    if "kalshi" in {buy_exchange_lower, sell_exchange_lower}:
+        if not kalshi_contract_side:
+            if buy_exchange_lower == "kalshi" and buy_outcome:
+                kalshi_contract_side = buy_outcome
+            elif sell_exchange_lower == "kalshi" and sell_outcome:
+                kalshi_contract_side = sell_outcome
+            else:
+                kalshi_contract_side = kalshi_side
+        kalshi_contract_side = str(kalshi_contract_side).lower()
+        if kalshi_contract_side not in {"yes", "no"}:
+            raise TradeExecutionError(
+                f"Kalshi contract_side must be 'yes' or 'no', got {kalshi_contract_side}"
+            )
+    else:
+        kalshi_contract_side = "yes"
+
+    buy_order_side, buy_order_price = _resolve_order_params(
+        buy_exchange_lower, "buy", buy_price, buy_outcome
+    )
+    sell_order_side, sell_order_price = _resolve_order_params(
+        sell_exchange_lower, "sell", sell_price, sell_outcome
+    )
+
+    buy_cost_per_qty = _cost_per_qty(
+        buy_exchange_lower,
+        buy_order_price,
+        buy_order_side,
+        contract_side=kalshi_contract_side,
+    )
+    sell_cost_per_qty = _cost_per_qty(
+        sell_exchange_lower,
+        sell_order_price,
+        sell_order_side,
+        contract_side=kalshi_contract_side,
+    )
+    buy_notional = qty * buy_cost_per_qty
+    sell_notional = qty * sell_cost_per_qty
+    opportunity["position_size"] = qty
+    opportunity["qty"] = qty
+    opportunity["buy_cost_per_qty"] = buy_cost_per_qty
+    opportunity["sell_cost_per_qty"] = sell_cost_per_qty
+    opportunity["buy_notional"] = buy_notional
+    opportunity["sell_notional"] = sell_notional
+    if "profit" in opportunity:
+        opportunity["expected_pnl"] = opportunity["profit"] * qty
+    else:
+        opportunity.setdefault("expected_pnl", 0.0)
 
     risk_manager = get_risk_manager()
     reservation_id: Optional[str] = None
@@ -746,22 +892,39 @@ async def execute_arbitrage_trade(
         reservation_id = risk_manager.reserve_trade(
             buy_exchange,
             sell_exchange,
-            pm_market_id,
-            sx_market_id,
-            size,
+            buy_market_id,
+            sell_market_id,
+            buy_notional,
+            sell_notional,
         )
     except PanicError as exc:
         logging.error("Trade blocked by risk manager: %s", exc)
         raise TradeExecutionError(str(exc)) from exc
 
-    if dry_run or not wallet:
+    requires_wallet = any(
+        exchange in {"polymarket", "sx"}
+        for exchange in (buy_exchange_lower, sell_exchange_lower)
+    )
+    if dry_run or (requires_wallet and not wallet):
         logging.info("DRY RUN: Orders not actually placed")
         result = {
             "status": "simulated",
             "buy_exchange": buy_exchange,
             "sell_exchange": sell_exchange,
-            "buy_order": {"status": "simulated", "price": buy_price, "size": size},
-            "sell_order": {"status": "simulated", "price": sell_price, "size": size},
+            "buy_order": {
+                "status": "simulated",
+                "price": buy_order_price,
+                "size": qty,
+                "qty": qty,
+                "notional": buy_notional,
+            },
+            "sell_order": {
+                "status": "simulated",
+                "price": sell_order_price,
+                "size": qty,
+                "qty": qty,
+                "notional": sell_notional,
+            },
             "expected_pnl": opportunity["expected_pnl"],
         }
 
@@ -770,25 +933,28 @@ async def execute_arbitrage_trade(
         update_pnl(opportunity["expected_pnl"])
 
         logging.info(
-            "✅ Simulated trade executed. Expected PnL: $%.2f",
+            "Simulated trade executed. Expected PnL: $%.2f",
             opportunity["expected_pnl"],
         )
 
         trade_logger.info(
-            "SIMULATED | buy=%s @ %.4f | sell=%s @ %.4f | size=$%.2f | expected_pnl=$%.2f",
+            "SIMULATED | buy=%s @ %.4f | sell=%s @ %.4f | qty=%.4f | expected_pnl=$%.2f",
             buy_exchange,
             buy_price,
             sell_exchange,
             sell_price,
-            size,
+            qty,
             opportunity["expected_pnl"],
             extra={
                 "exchange": f"{buy_exchange}/{sell_exchange}",
-                "market": f"{pm_market_id}/{sx_market_id}",
+                "market": f"{buy_market_id}/{sell_market_id}",
             },
         )
 
         return result
+
+    if ("kalshi" in {buy_exchange_lower, sell_exchange_lower}) and not kalshi_api_key:
+        raise TradeExecutionError("Kalshi API key required for real trading")
 
     # Place actual orders (using IOC for immediate execution)
     # Use asyncio.gather() to place both orders in parallel
@@ -801,9 +967,12 @@ async def execute_arbitrage_trade(
         buy_reserved = False
         sell_reserved = False
 
+        buy_reserve_amount = buy_notional
+        sell_reserve_amount = sell_notional
+
         # Reserve balance for buy order
         try:
-            balance_manager.reserve_balance(buy_exchange, size)
+            balance_manager.reserve_balance(buy_exchange, buy_reserve_amount)
             buy_reserved = True
         except InsufficientBalanceError as exc:
             logging.error("Cannot place buy order: %s", exc)
@@ -811,19 +980,30 @@ async def execute_arbitrage_trade(
 
         # Reserve balance for sell order
         try:
-            balance_manager.reserve_balance(sell_exchange, size)
+            balance_manager.reserve_balance(sell_exchange, sell_reserve_amount)
             sell_reserved = True
         except InsufficientBalanceError as exc:
             # Release buy balance if sell reservation fails
-            balance_manager.release_balance(buy_exchange, size)
+            balance_manager.release_balance(buy_exchange, buy_reserve_amount)
             buy_reserved = False
             logging.error("Cannot place sell order: %s", exc)
             raise TradeExecutionError(str(exc)) from exc
 
+        buy_order_size = (
+            int(qty) if buy_exchange_lower == "kalshi" else buy_notional
+        )
+        sell_order_size = (
+            int(qty) if sell_exchange_lower == "kalshi" else sell_notional
+        )
+
         # Prepare buy order coroutine
         # Use try-except to ensure balances are released if coroutine creation fails
         try:
-            if buy_exchange == "polymarket":
+            if buy_exchange_lower == "polymarket":
+                if not pm_market_id:
+                    raise TradeExecutionError(
+                        "Polymarket market_id required for real trading"
+                    )
                 if not pm_token_id:
                     raise TradeExecutionError(
                         "Polymarket token_id required for real trading"
@@ -832,29 +1012,49 @@ async def execute_arbitrage_trade(
                     session,
                     pm_market_id,
                     pm_token_id,
-                    "buy",
-                    buy_price,
-                    size,
+                    buy_order_side,
+                    buy_order_price,
+                    buy_order_size,
                     wallet,
                     pm_api_key,
                     order_type="IOC",
                     _skip_balance_check=True,
                 )
-            else:  # sx
+            elif buy_exchange_lower == "sx":
+                if not sx_market_id:
+                    raise TradeExecutionError("SX market_id required for real trading")
                 buy_order_coro = place_order_sx(
                     session,
                     sx_market_id,
-                    "buy",
-                    buy_price,
-                    size,
+                    buy_order_side,
+                    buy_order_price,
+                    buy_order_size,
                     wallet,
                     sx_api_key,
                     order_type="IOC",
                     _skip_balance_check=True,
                 )
+            else:
+                if not kalshi_market_id:
+                    raise TradeExecutionError("Kalshi market_id required for trading")
+                buy_order_coro = place_order_kalshi(
+                    session,
+                    kalshi_market_id,
+                    buy_order_side,
+                    buy_order_price,
+                    buy_order_size,
+                    kalshi_api_key,
+                    contract_side=kalshi_contract_side,
+                    order_type="IOC",
+                    _skip_balance_check=True,
+                )
 
             # Prepare sell order coroutine
-            if sell_exchange == "polymarket":
+            if sell_exchange_lower == "polymarket":
+                if not pm_market_id:
+                    raise TradeExecutionError(
+                        "Polymarket market_id required for real trading"
+                    )
                 if not pm_token_id:
                     raise TradeExecutionError(
                         "Polymarket token_id required for real trading"
@@ -863,32 +1063,48 @@ async def execute_arbitrage_trade(
                     session,
                     pm_market_id,
                     pm_token_id,
-                    "sell",
-                    sell_price,
-                    size,
+                    sell_order_side,
+                    sell_order_price,
+                    sell_order_size,
                     wallet,
                     pm_api_key,
                     order_type="IOC",
                     _skip_balance_check=True,
                 )
-            else:  # sx
+            elif sell_exchange_lower == "sx":
+                if not sx_market_id:
+                    raise TradeExecutionError("SX market_id required for real trading")
                 sell_order_coro = place_order_sx(
                     session,
                     sx_market_id,
-                    "sell",
-                    sell_price,
-                    size,
+                    sell_order_side,
+                    sell_order_price,
+                    sell_order_size,
                     wallet,
                     sx_api_key,
+                    order_type="IOC",
+                    _skip_balance_check=True,
+                )
+            else:
+                if not kalshi_market_id:
+                    raise TradeExecutionError("Kalshi market_id required for trading")
+                sell_order_coro = place_order_kalshi(
+                    session,
+                    kalshi_market_id,
+                    sell_order_side,
+                    sell_order_price,
+                    sell_order_size,
+                    kalshi_api_key,
+                    contract_side=kalshi_contract_side,
                     order_type="IOC",
                     _skip_balance_check=True,
                 )
         except Exception as exc:
             # If coroutine creation fails, release reserved balances
             if buy_reserved:
-                balance_manager.release_balance(buy_exchange, size)
+                balance_manager.release_balance(buy_exchange, buy_reserve_amount)
             if sell_reserved:
-                balance_manager.release_balance(sell_exchange, size)
+                balance_manager.release_balance(sell_exchange, sell_reserve_amount)
             logging.error("Failed to prepare orders: %s", exc)
             raise
 
@@ -914,7 +1130,10 @@ async def execute_arbitrage_trade(
             if response:
                 try:
                     check_ioc_order_filled(
-                        response, buy_exchange, "IOC", expected_size=size
+                        response,
+                        buy_exchange,
+                        "IOC",
+                        expected_size=buy_order_size,
                     )
                 except TradeExecutionError as exc:
                     # Convert successful response with CANCELLED status to failed order
@@ -926,7 +1145,10 @@ async def execute_arbitrage_trade(
             if response:
                 try:
                     check_ioc_order_filled(
-                        response, sell_exchange, "IOC", expected_size=size
+                        response,
+                        sell_exchange,
+                        "IOC",
+                        expected_size=sell_order_size,
                     )
                 except TradeExecutionError as exc:
                     # Convert successful response with CANCELLED status to failed order
@@ -949,7 +1171,7 @@ async def execute_arbitrage_trade(
                     else "unknown"
                 )
                 logging.error(
-                    "🚨 CRITICAL: Buy failed but sell succeeded! "
+                    "CRITICAL: Buy failed but sell succeeded! "
                     "Unhedged position: %s %s @ %.4f",
                     sell_exchange,
                     sell_order_id,
@@ -969,10 +1191,10 @@ async def execute_arbitrage_trade(
                 )
                 # Release buy balance (order didn't execute), commit sell balance (executed)
                 if buy_reserved:
-                    balance_manager.release_balance(buy_exchange, size)
+                    balance_manager.release_balance(buy_exchange, buy_reserve_amount)
                     buy_reserved = False
                 if sell_reserved:
-                    balance_manager.commit_order(sell_exchange, size)
+                    balance_manager.commit_order(sell_exchange, sell_reserve_amount)
                     sell_reserved = False
             elif sell_failed and not buy_failed:
                 buy_order_id = (
@@ -981,7 +1203,7 @@ async def execute_arbitrage_trade(
                     else "unknown"
                 )
                 logging.error(
-                    "🚨 CRITICAL: Sell failed but buy succeeded! "
+                    "CRITICAL: Sell failed but buy succeeded! "
                     "Unhedged position: %s %s @ %.4f",
                     buy_exchange,
                     buy_order_id,
@@ -1001,18 +1223,18 @@ async def execute_arbitrage_trade(
                 )
                 # Commit buy balance (executed), release sell balance (didn't execute)
                 if buy_reserved:
-                    balance_manager.commit_order(buy_exchange, size)
+                    balance_manager.commit_order(buy_exchange, buy_reserve_amount)
                     buy_reserved = False
                 if sell_reserved:
-                    balance_manager.release_balance(sell_exchange, size)
+                    balance_manager.release_balance(sell_exchange, sell_reserve_amount)
                     sell_reserved = False
             else:
                 # Both failed, release both
                 if buy_reserved:
-                    balance_manager.release_balance(buy_exchange, size)
+                    balance_manager.release_balance(buy_exchange, buy_reserve_amount)
                     buy_reserved = False
                 if sell_reserved:
-                    balance_manager.release_balance(sell_exchange, size)
+                    balance_manager.release_balance(sell_exchange, sell_reserve_amount)
                     sell_reserved = False
 
             raise TradeExecutionError(
@@ -1032,17 +1254,17 @@ async def execute_arbitrage_trade(
             sell_order.get("order_id") if isinstance(sell_order, dict) else "unknown"
         )
         logging.info(
-            "✅ Both orders placed successfully: buy=%s, sell=%s",
+            "Both orders placed successfully: buy=%s, sell=%s",
             buy_order_id,
             sell_order_id,
         )
 
         # Commit both balances (orders were successful)
         if buy_reserved:
-            balance_manager.commit_order(buy_exchange, size)
+            balance_manager.commit_order(buy_exchange, buy_reserve_amount)
             buy_reserved = False
         if sell_reserved:
-            balance_manager.commit_order(sell_exchange, size)
+            balance_manager.commit_order(sell_exchange, sell_reserve_amount)
             sell_reserved = False
 
         # Both orders filled successfully - update metrics
@@ -1059,21 +1281,21 @@ async def execute_arbitrage_trade(
         }
 
         logging.info(
-            "✅ Trade executed successfully. Expected PnL: $%.2f",
+            "Trade executed successfully. Expected PnL: $%.2f",
             opportunity["expected_pnl"],
         )
 
         trade_logger.info(
-            "EXECUTED | buy=%s @ %.4f | sell=%s @ %.4f | size=$%.2f | expected_pnl=$%.2f",
+            "EXECUTED | buy=%s @ %.4f | sell=%s @ %.4f | qty=%.4f | expected_pnl=$%.2f",
             buy_exchange,
             buy_price,
             sell_exchange,
             sell_price,
-            size,
+            qty,
             opportunity["expected_pnl"],
             extra={
                 "exchange": f"{buy_exchange}/{sell_exchange}",
-                "market": f"{pm_market_id}/{sx_market_id}",
+                "market": f"{buy_market_id}/{sell_market_id}",
             },
         )
 
@@ -1091,10 +1313,10 @@ async def execute_arbitrage_trade(
             # This prevents double-release errors
             if "buy_reserved" in locals() and buy_reserved:
                 balance_manager = get_balance_manager()
-                balance_manager.release_balance(buy_exchange, size)
+                balance_manager.release_balance(buy_exchange, buy_reserve_amount)
             if "sell_reserved" in locals() and sell_reserved:
                 balance_manager = get_balance_manager()
-                balance_manager.release_balance(sell_exchange, size)
+                balance_manager.release_balance(sell_exchange, sell_reserve_amount)
         except Exception as release_exc:
             logging.error(
                 "Failed to release balances during error cleanup: %s", release_exc
@@ -1107,9 +1329,10 @@ async def execute_arbitrage_trade(
                     reservation_id,
                     buy_exchange,
                     sell_exchange,
-                    pm_market_id,
-                    sx_market_id,
-                    size,
+                    buy_market_id,
+                    sell_market_id,
+                    buy_notional,
+                    sell_notional,
                 )
             except Exception:
                 logging.exception("Failed to release risk reservation")

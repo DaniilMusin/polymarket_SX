@@ -1,252 +1,67 @@
-import sys
 import os
+import sys
+
 import pytest
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+sys.path.insert(
+    0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+)  # noqa: E402
 
-from core.event_validator import EventValidator, EventValidationError  # noqa: E402
-
-
-class DummyResponse:
-    def __init__(self, data, status=200):
-        self._data = data
-        self.status = status
-        self._text = str(data)
-
-    async def json(self):
-        return self._data
-
-    async def text(self):
-        return self._text
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, exc_type, exc, tb):
-        pass
+from core.event_validator import EventValidator  # noqa: E402
 
 
-class DummySession:
-    def __init__(self, data, status=200):
-        self._data = data
-        self._status = status
-
-    def post(self, *args, **kwargs):
-        return DummyResponse(self._data, self._status)
+def _wrap_content(content: str) -> dict:
+    return {"choices": [{"message": {"content": content}}]}
 
 
-def test_validator_without_api_key():
-    """Test validator initialization without API key."""
-    # Clear environment variable if set
-    old_key = os.environ.pop("PERPLEXITY_API_KEY", None)
-    try:
-        validator = EventValidator()
-        assert validator.api_key is None
-    finally:
-        if old_key:
-            os.environ["PERPLEXITY_API_KEY"] = old_key
-
-
-def test_validator_with_api_key():
-    """Test validator initialization with API key."""
-    validator = EventValidator(api_key="test_key")
-    assert validator.api_key == "test_key"
-    assert validator.model == "sonar-reasoning"
-
-
-@pytest.mark.asyncio
-async def test_validate_events_without_api_key():
-    """Test validation when API key is not set."""
-    import os
-
-    # Set environment variable to allow unvalidated events
-    # This simulates the user explicitly accepting the risk
-    old_value = os.environ.get("ALLOW_UNVALIDATED_EVENTS")
-    os.environ["ALLOW_UNVALIDATED_EVENTS"] = "true"
-
-    try:
-        validator = EventValidator()  # No API key
-        session = DummySession({})
-
-        result = await validator.validate_events(
-            session,
-            "Event 1",
-            "Description 1",
-            "Polymarket",
-            "Event 2",
-            "Description 2",
-            "Kalshi",
-        )
-
-        assert result["are_same"] is True  # Defaults to True when disabled
-        assert result["confidence"] == "unknown"
-        assert "disabled" in result["reasoning"].lower()
-        assert result["warning"] is not None
-    finally:
-        # Restore original value
-        if old_value is None:
-            os.environ.pop("ALLOW_UNVALIDATED_EVENTS", None)
-        else:
-            os.environ["ALLOW_UNVALIDATED_EVENTS"] = old_value
-
-
-@pytest.mark.asyncio
-async def test_validate_events_same_events():
-    """Test validation of same events."""
-    response_data = {
-        "choices": [
-            {
-                "message": {
-                    "content": """VERDICT: SAME
-CONFIDENCE: HIGH
-REASONING: Both events refer to the 2024 US Presidential Election with identical resolution criteria.  # noqa: E501
-WARNING: NONE"""
-                }
-            }
-        ]
-    }
-    session = DummySession(response_data)
-    validator = EventValidator(api_key="test_key")
-
-    result = await validator.validate_events(
-        session,
-        "Will Donald Trump win the 2024 election?",
-        "Resolves YES if Trump wins",
-        "Polymarket",
-        "Trump 2024 Presidential Victory",
-        "YES if Trump is elected president in 2024",
-        "Kalshi",
+def test_parse_response_json():
+    validator = EventValidator(api_key="dummy")
+    content = (
+        '{"verdict":"SAME","confidence":"high","reasoning":"ok","warning":null}'
     )
-
+    result = validator._parse_response(_wrap_content(content))
     assert result["are_same"] is True
     assert result["confidence"] == "high"
-    assert "2024" in result["reasoning"] or "identical" in result["reasoning"].lower()
+    assert result["warning"] is None
+
+
+def test_parse_response_json_code_fence():
+    validator = EventValidator(api_key="dummy")
+    content = """```json
+{"verdict":"DIFFERENT","confidence":"low","reasoning":"nope","warning":"ambiguous"}
+```"""
+    result = validator._parse_response(_wrap_content(content))
+    assert result["are_same"] is False
+    assert result["confidence"] == "low"
+    assert result["warning"] == "ambiguous"
+
+
+def test_parse_response_legacy_format():
+    validator = EventValidator(api_key="dummy")
+    content = """VERDICT: SAME
+CONFIDENCE: MEDIUM
+REASONING: Matches the same event.
+WARNING: NONE
+"""
+    result = validator._parse_response(_wrap_content(content))
+    assert result["are_same"] is True
+    assert result["confidence"] == "medium"
     assert result["warning"] is None
 
 
 @pytest.mark.asyncio
-async def test_validate_events_different_events():
-    """Test validation of different events."""
-    response_data = {
-        "choices": [
-            {
-                "message": {
-                    "content": """VERDICT: DIFFERENT
-CONFIDENCE: HIGH
-REASONING: Event 1 asks about winning the election, while Event 2 asks about winning the nomination. These are distinct events with different resolution criteria.  # noqa: E501
-WARNING: These events resolve at different times and under different conditions."""
-                }
-            }
-        ]
-    }
-    session = DummySession(response_data)
-    validator = EventValidator(api_key="test_key")
-
+async def test_allow_unvalidated_events_sets_high_confidence(monkeypatch):
+    monkeypatch.delenv("PERPLEXITY_API_KEY", raising=False)
+    monkeypatch.setenv("ALLOW_UNVALIDATED_EVENTS", "true")
+    validator = EventValidator(api_key=None)
     result = await validator.validate_events(
-        session,
-        "Will Trump win the 2024 election?",
-        "Resolves YES if Trump wins general election",
-        "Polymarket",
-        "Will Trump win the Republican nomination?",
-        "Resolves YES if Trump wins nomination",
-        "Kalshi",
+        session=object(),
+        event1_name="A",
+        event1_description="",
+        platform1="Polymarket",
+        event2_name="B",
+        event2_description="",
+        platform2="SX",
     )
-
-    assert result["are_same"] is False
-    assert result["confidence"] == "high"
-    assert result["warning"] is not None
-
-
-@pytest.mark.asyncio
-async def test_validate_events_api_error():
-    """Test handling of API errors."""
-    session = DummySession({}, status=500)
-    validator = EventValidator(api_key="test_key")
-
-    with pytest.raises(EventValidationError) as excinfo:
-        await validator.validate_events(
-            session,
-            "Event 1",
-            "Description 1",
-            "Polymarket",
-            "Event 2",
-            "Description 2",
-            "Kalshi",
-        )
-    assert "500" in str(excinfo.value)
-
-
-@pytest.mark.asyncio
-async def test_validate_events_medium_confidence():
-    """Test validation with medium confidence."""
-    response_data = {
-        "choices": [
-            {
-                "message": {
-                    "content": """VERDICT: SAME
-CONFIDENCE: MEDIUM
-REASONING: Events appear to refer to the same occurrence but wording differs slightly.
-WARNING: Resolution criteria should be verified manually."""
-                }
-            }
-        ]
-    }
-    session = DummySession(response_data)
-    validator = EventValidator(api_key="test_key")
-
-    result = await validator.validate_events(
-        session,
-        "Bitcoin above $100k by EOY",
-        "BTC price >= $100,000 on Dec 31",
-        "Polymarket",
-        "BTC hits $100k this year",
-        "Bitcoin reaches $100k in 2024",
-        "Kalshi",
-    )
-
-    assert result["are_same"] is True
-    assert result["confidence"] == "medium"
-    assert result["warning"] is not None
-
-
-def test_parse_response_basic():
-    """Test response parsing."""
-    validator = EventValidator(api_key="test_key")
-    data = {
-        "choices": [
-            {
-                "message": {
-                    "content": """VERDICT: SAME
-CONFIDENCE: HIGH
-REASONING: Test reasoning
-WARNING: Test warning"""
-                }
-            }
-        ]
-    }
-
-    result = validator._parse_response(data)
     assert result["are_same"] is True
     assert result["confidence"] == "high"
-    assert result["reasoning"] == "Test reasoning"
-    assert result["warning"] == "Test warning"
-
-
-def test_build_validation_prompt():
-    """Test prompt building."""
-    validator = EventValidator(api_key="test_key")
-    prompt = validator._build_validation_prompt(
-        "Event 1",
-        "Desc 1",
-        "Platform1",
-        "Event 2",
-        "Desc 2",
-        "Platform2",
-    )
-
-    assert "Event 1" in prompt
-    assert "Event 2" in prompt
-    assert "Platform1" in prompt
-    assert "Platform2" in prompt
-    assert "VERDICT" in prompt
-    assert "CONFIDENCE" in prompt

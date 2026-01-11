@@ -29,7 +29,7 @@ class AlertManager:
 
         if not self.telegram_enabled and not self.discord_enabled:
             logging.warning(
-                "⚠️  No alert channels configured! "
+                "No alert channels configured! "
                 "Set TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID or DISCORD_WEBHOOK_URL"
             )
 
@@ -45,12 +45,12 @@ class AlertManager:
             details: Optional dict with additional details
         """
         # Format message
-        full_message = f"🚨 **CRITICAL: {title}**\n\n{message}"
+        full_message = f"**CRITICAL: {title}**\n\n{message}"
 
         if details:
             full_message += "\n\n**Details:**\n"
             for key, value in details.items():
-                full_message += f"• {key}: {value}\n"
+                full_message += f"- {key}: {value}\n"
 
         # Send to all channels
         tasks = []
@@ -63,19 +63,19 @@ class AlertManager:
             await asyncio.gather(*tasks, return_exceptions=True)
         else:
             # Log to console if no alerts configured
-            logging.error("🚨 CRITICAL ALERT (no channels configured):")
+            logging.error("CRITICAL ALERT (no channels configured):")
             logging.error(full_message)
 
     async def send_warning_alert(
         self, title: str, message: str, details: Optional[dict] = None
     ):
         """Send warning alert."""
-        full_message = f"⚠️  **WARNING: {title}**\n\n{message}"
+        full_message = f"**WARNING: {title}**\n\n{message}"
 
         if details:
             full_message += "\n\n**Details:**\n"
             for key, value in details.items():
-                full_message += f"• {key}: {value}\n"
+                full_message += f"- {key}: {value}\n"
 
         tasks = []
         if self.telegram_enabled:
@@ -90,12 +90,12 @@ class AlertManager:
         self, title: str, message: str, details: Optional[dict] = None
     ):
         """Send info alert."""
-        full_message = f"ℹ️  **{title}**\n\n{message}"
+        full_message = f"**INFO: {title}**\n\n{message}"
 
         if details:
             full_message += "\n\n**Details:**\n"
             for key, value in details.items():
-                full_message += f"• {key}: {value}\n"
+                full_message += f"- {key}: {value}\n"
 
         tasks = []
         if self.telegram_enabled:
@@ -120,7 +120,7 @@ class AlertManager:
                 timeout = aiohttp.ClientTimeout(total=10.0)
                 async with session.post(url, json=payload, timeout=timeout) as resp:
                     if resp.status == 200:
-                        logging.info("✅ Telegram alert sent")
+                        logging.info("Telegram alert sent")
                     else:
                         error = await resp.text()
                         logging.error("Failed to send Telegram alert: %s", error)
@@ -153,7 +153,7 @@ class AlertManager:
                     self.discord_webhook, json=payload, timeout=timeout
                 ) as resp:
                     if resp.status in [200, 204]:
-                        logging.info("✅ Discord alert sent")
+                        logging.info("Discord alert sent")
                     else:
                         error = await resp.text()
                         logging.error("Failed to send Discord alert: %s", error)

@@ -146,7 +146,7 @@ class StatisticsCollector:
             if executed:
                 if actual_pnl is not None:
                     logging.info(
-                        "📊 Opportunity executed: %s->%s, spread=%.2f bps, "
+                        "STATS: Opportunity executed: %s->%s, spread=%.2f bps, "
                         "expected=$%.2f, actual=$%.2f",
                         stats.buy_exchange,
                         stats.sell_exchange,
@@ -156,13 +156,13 @@ class StatisticsCollector:
                     )
                 else:
                     logging.warning(
-                        "📊 Opportunity execution attempted but PnL unknown: %s->%s",
+                        "STATS: Opportunity execution attempted but PnL unknown: %s->%s",
                         stats.buy_exchange,
                         stats.sell_exchange,
                     )
             else:
                 logging.info(
-                    "📊 Opportunity found (not executed): %s->%s, spread=%.2f bps, "
+                    "STATS: Opportunity found (not executed): %s->%s, spread=%.2f bps, "
                     "expected=$%.2f",
                     stats.buy_exchange,
                     stats.sell_exchange,
@@ -245,7 +245,7 @@ class StatisticsCollector:
                 writer.writerow(stats)
 
             logging.info(
-                "📊 Daily summary saved: %d opportunities, %d executed (%.1f%%), "
+                "STATS: Daily summary saved: %d opportunities, %d executed (%.1f%%), "
                 "expected=$%.2f, actual=$%.2f",
                 stats["opportunities_found"],
                 stats["opportunities_executed"],
